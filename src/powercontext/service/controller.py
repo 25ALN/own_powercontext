@@ -295,6 +295,8 @@ class ServiceController:
             self._recover_definition_switch()
             registration, running = self._owned_registration()
             record = self._maintenance_record()
+            if record is not None and record.get("phase") == "runtime_repair":
+                raise ServiceError("resume the owning Ops runtime repair before starting the service")  # noqa: TRY003
             if record is not None and record.get("phase") not in {"manual_stopped", "database_ready", "start_failed"}:
                 raise ServiceError(  # noqa: TRY003
                     "the database migration has not been verified; complete it before starting the service"
@@ -337,6 +339,53 @@ class ServiceController:
                 raise ServiceError("the service is not stopped with a persistent maintenance guard")  # noqa: TRY003
             self._require_stopped(registration.definition)
             return self.status()
+
+    @contextmanager
+    def runtime_repair(self, *, expected_definition: ServiceDefinition, repair_id: str) -> Generator[None, None, None]:
+        """Hold an owned service stopped while its exact runtime is repaired.
+
+        The installer owns resource publication and verification inside this
+        boundary. A normal exit confirms those steps; an exception or process
+        exit retains a guard that ordinary start/install cannot clear. Repair
+        never changes the registered executable, configuration, or version,
+        and completion leaves the service explicitly stopped.
+        """
+        if (
+            not repair_id
+            or len(repair_id) > 96
+            or not all(c.isascii() and (c.isalnum() or c in "-_") for c in repair_id)
+        ):
+            raise ServiceError("the runtime repair identity is invalid")  # noqa: TRY003
+        with self.mutation():
+            registration, _running = self._owned_registration()
+            if registration.definition != expected_definition:
+                raise ServiceError("the service changed; review a new runtime repair plan")  # noqa: TRY003
+            guard: dict[str, object] = {
+                "phase": "runtime_repair",
+                "repair_id": repair_id,
+                "definition": expected_definition.as_dict(),
+                "registration_checksum": hashlib.sha256(registration.content or b"").hexdigest(),
+            }
+            record = self._maintenance_record()
+            if record is not None and record.get("phase") not in {"manual_stopped", "start_failed"} and record != guard:
+                raise ServiceError("finish the existing service maintenance before repairing its runtime")  # noqa: TRY003
+            self._write_maintenance_record(guard)
+            self._adapter.suspend(self.maintenance_path)
+            self._adapter.stop()
+            self._require_stopped(expected_definition)
+            yield
+            registration, running = self._owned_registration()
+            if (
+                running
+                or registration.definition != expected_definition
+                or hashlib.sha256(registration.content or b"").hexdigest() != guard["registration_checksum"]
+                or self._maintenance_record() != guard
+            ):
+                raise ServiceError("the service changed during runtime repair; preserve its recovery guard")  # noqa: TRY003
+            self._require_stopped(expected_definition)
+            if not Path(expected_definition.python_executable).is_file():
+                raise ServiceError("the repaired Server executable is unavailable")  # noqa: TRY003
+            self._write_maintenance_record({"phase": "manual_stopped"})
 
     def stop(self) -> ServiceStatus:
         """Stop the owned service and persistently suppress native automatic activation."""
@@ -869,6 +918,8 @@ class ServiceController:
         ):
             if record.get("phase") == "configuration_switching":
                 recovery = "use the owning Ops caller to inspect and resume the interrupted `config_apply` operation"
+            elif record.get("phase") == "runtime_repair":
+                recovery = "use the owning Ops caller to inspect and resume the interrupted runtime repair"
             elif record.get("phase") == "manual_switching":
                 recovery = "run `powercontext service install` to finish the interrupted stopped-registration update"
             elif record.get("phase") == "manual_stopped" and registration.definition is DefinitionState.CURRENT:
@@ -952,6 +1003,7 @@ class ServiceController:
             data_dir=data_dir,
             env_file=loaded_env.identity if loaded_env is not None else None,
             start_on_login=start_on_login,
+            isolated_runtime=target.isolated_runtime,
         )
 
     def _run_uninstall_stage(self, stage: str, operation: Callable[[], None]) -> None:
