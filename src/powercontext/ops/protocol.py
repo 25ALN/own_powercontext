@@ -182,15 +182,15 @@ def _validate_installation_plan(value: object) -> None:
             "preserve_stopped",
             "repair_owner",
             "registration_present",
-        },
+        }
+        | ({"registration_removal"} if isinstance(value, dict) and "registration_removal" in value else set()),
     )
     for field in ("catalog_sha256", "service_before"):
         if not isinstance(facts[field], str) or re.fullmatch(r"[a-f0-9]{64}", facts[field]) is None:
             raise OpsError("invalid_request")
-    if facts["repair_owner"] is not None:
-        identifier(facts["repair_owner"])
-    if facts["installation_id"] is not None:
-        identifier(facts["installation_id"])
+    for field in ("repair_owner", "installation_id", "registration_removal"):
+        if facts.get(field) is not None:
+            identifier(facts[field])
     if facts["classification"] not in ("missing", "owned_current", "owned_repairable", "pending_operation") or facts[
         "resources"
     ] not in ("missing", "damaged", "verified"):

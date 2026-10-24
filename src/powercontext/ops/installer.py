@@ -157,14 +157,15 @@ class ManagedInstaller:
             raise OpsError("installation_record_invalid")
         return record
 
-    def _pending(self, ops: Ops, *, missing_registration: bool = False) -> dict[str, Any] | None:
+    def _pending(self, ops: Ops, *, snapshot: dict[str, Any] | None = None) -> dict[str, Any] | None:
         latest = ops.store.read("_installation_owner.json")
         if latest is None:
             return None
         if set(latest) != {"format_version", "operation_id"}:
             raise OpsError("installation_record_invalid")
         record = ops._record(protocol.identifier(latest.get("operation_id")))
-        if missing_registration:
+        if snapshot is not None and snapshot["registration"].get("definition") is None:
+            removal = snapshot["registration_removal"]
             for previous in record["attempts"]:
                 result = previous.get("result") or {}
                 components = result.get("components") or {}
@@ -172,9 +173,16 @@ class ManagedInstaller:
                 facts = previous["plan"].get("installation") or {}
                 if (
                     facts.get("registration_present") is True
-                    or state.get("stage") in {"registration_dispatching", "complete"}
+                    or state.get("stage") == "complete"
                     or components.get("registration") == "installed"
-                    or previous.get("native_command") is not None
+                    or facts.get("registration_removal") != removal
+                    or (
+                        "registration_removal" not in facts
+                        and (
+                            state.get("stage") == "registration_dispatching"
+                            or previous.get("native_command") is not None
+                        )
+                    )
                 ):
                     raise OpsError("registration_missing")
         attempt = record["attempts"][-1]
@@ -253,7 +261,7 @@ class ManagedInstaller:
         ops._assert_target(snapshot, operation)
         installation = self._installation(ops)
         definition = snapshot["registration"].get("definition")
-        pending = self._pending(ops, missing_registration=definition is None)
+        pending = self._pending(ops, snapshot=snapshot)
         evidence = installation or pending
         if installation and pending and installation["installation_id"] == pending["installation_id"]:
             evidence = {**installation, **pending}
@@ -353,6 +361,7 @@ class ManagedInstaller:
             "preserve_stopped": preserve_stopped,
             "repair_owner": repair_owner,
             "registration_present": definition is not None,
+            "registration_removal": snapshot["registration_removal"],
         }
         plan = {
             "protocol_version": 1,
@@ -442,7 +451,27 @@ class ManagedInstaller:
         resource_state, _identity = self._resource_fact(state, cancelled=resource_cancelled)
         if resource_state != "verified":
             prepared = state.get("prepared")
+            if prepared is not None and (
+                Path(prepared["directory"]).exists() or Path(prepared["directory"]).is_symlink()
+            ):
+                try:
+                    self._verify_prepared(prepared, cancelled=resource_cancelled)
+                except ResourceError as error:
+                    if error.code != "resource_corrupt":
+                        raise
+                    path = Path(prepared["directory"])
+                    # Only a private, link-free tree with the recorded identity
+                    # directly inside our staging root is disposable.
+                    if (
+                        not path.is_absolute()
+                        or path.resolve().parent != (self.layout.programs / "staging").resolve()
+                        or validate_owned_tree(path) != prepared["identity"]
+                    ):
+                        raise OpsError("resource_identity_changed") from error
+                    shutil.rmtree(path)
+                    prepared = None
             if prepared is None or not Path(prepared["directory"]).exists():
+                state["prepared"] = None
                 checkpoint("preparing")
                 staging = self.layout.programs / "staging"
                 try:
@@ -453,8 +482,6 @@ class ManagedInstaller:
                     raise
                 state["prepared"] = {"directory": str(result.directory), "identity": result.identity}
                 checkpoint("prepared")
-            else:
-                self._verify_prepared(state["prepared"], cancelled=resource_cancelled)
         if cancelled():
             return {"outcome": "cancelled", "components": self.components(ops, state)}
         with ops.controller.mutation(timeout=0):

@@ -174,6 +174,99 @@ def test_cancel_after_download_resumes_without_replacing_prepared_tree(managed):
     assert validate_owned_tree(installer.directory) == prepared
 
 
+@pytest.mark.parametrize("failure", ["port_conflict", "dispatching_interruption"])
+def test_first_registration_failure_can_resume(managed, monkeypatch, failure):
+    from powercontext.service.probe import probe_server
+
+    ops, adapter, _installer = managed
+    port = _free_port()
+    request = _apply_request(_plan(ops, "install", http_port=port), "install")
+    with socket.socket() as listener, monkeypatch.context() as fault:
+        if failure == "port_conflict":
+            fault.setattr(ops.controller, "_probe", lambda endpoint: probe_server(endpoint, timeout=0.1))
+
+            def occupy_port(message):
+                if message.get("phase") == "registering":
+                    listener.bind(("127.0.0.1", port))
+                    listener.listen()
+
+            failed = ops.handle(request, emit=occupy_port)
+            assert failed["outcome"] == "uncertain", failed
+        else:
+
+            def interrupted(**kwargs):
+                raise SystemExit(99)
+
+            fault.setattr(ops.controller, "install", interrupted)
+            with pytest.raises(SystemExit):
+                ops.handle(request)
+    assert adapter.definition is None
+    assert adapter.events == []
+    record = ops.store.operation("install")
+    identity = record["attempts"][-1]["installation"]["installation_id"]
+    result = ops.handle({
+        **_apply_request(_plan(ops, "install", http_port=port), "install"),
+        "action": "resume",
+        "expected_attempt": 1,
+    })
+    assert result["outcome"] == "succeeded", result
+    assert result["result"]["components"]["installation_id"] == identity
+    assert adapter.manager == ManagerState.ACTIVE
+
+
+@pytest.mark.parametrize("resume", [True, False])
+def test_corrupt_owned_staging_can_be_prepared_again(managed, resume):
+    ops, adapter, installer = managed
+    port = _free_port()
+
+    def cancel(message):
+        if message.get("phase") == "prepared":
+            ops.handle(_request("cancel", operation_id="install", attempt=1))
+
+    first = ops.handle(_apply_request(_plan(ops, "install", http_port=port), "install"), emit=cancel)
+    assert first["outcome"] == "cancelled", first
+    record = ops.store.operation("install")
+    state = record["attempts"][-1]["installation"]
+    damaged = Path(state["prepared"]["directory"])
+    (damaged / next(iter(_FILES))).write_bytes(b"corrupt")
+    request = _apply_request(_plan(ops, "install", http_port=port), "install" if resume else "retry")
+    if resume:
+        request.update(action="resume", expected_attempt=1)
+    result = ops.handle(request)
+    assert result["outcome"] == "succeeded", result
+    assert result["result"]["components"]["installation_id"] == state["installation_id"]
+    assert adapter.manager == ManagerState.ACTIVE
+    assert not damaged.exists()
+    verify(installer.spec, installer.directory)
+
+
+def test_replaced_staging_is_preserved_and_not_reacquired(managed):
+    ops, adapter, _installer = managed
+    port = _free_port()
+
+    def cancel(message):
+        if message.get("phase") == "prepared":
+            ops.handle(_request("cancel", operation_id="install", attempt=1))
+
+    first = ops.handle(_apply_request(_plan(ops, "install", http_port=port), "install"), emit=cancel)
+    assert first["outcome"] == "cancelled", first
+    record = ops.store.operation("install")
+    directory = Path(record["attempts"][-1]["installation"]["prepared"]["directory"])
+    directory.rename(directory.with_name("previous"))
+    protect_directory(directory, create=True)
+    foreign = directory / "user-owned"
+    foreign.write_bytes(b"retain")
+    result = ops.handle({
+        **_apply_request(_plan(ops, "install", http_port=port), "install"),
+        "action": "resume",
+        "expected_attempt": 1,
+    })
+    assert result["outcome"] == "failed", result
+    assert result["result"]["error"]["code"] == "resource_identity_changed", result
+    assert foreign.read_bytes() == b"retain"
+    assert adapter.definition is None
+
+
 def test_existing_unknown_database_blocks_start_but_allows_repair(managed):
     ops, adapter, installer = managed
     install(ops)
@@ -398,16 +491,17 @@ def test_repair_rejects_database_inside_managed_program_tree(managed):
         assert database.execute("SELECT value FROM user_owned").fetchall() == [("retained",)]
 
 
-@pytest.mark.parametrize("checkpoint", ["failed", "dispatched", "continued"])
+@pytest.mark.parametrize("checkpoint", ["failed", "dispatched", "continued", "before_registration"])
 def test_uninstalled_partial_install_cannot_be_revived_by_old_recovery(managed, monkeypatch, checkpoint):
     ops, adapter, _installer = managed
     request = _apply_request(_plan(ops, "install", http_port=_free_port()), "install")
     operation_id = "install"
-    if checkpoint == "dispatched":
+    if checkpoint in {"dispatched", "before_registration"}:
         install_target = ops.controller.install
 
         def interrupted_install(**kwargs):
-            install_target(**kwargs)
+            if checkpoint == "dispatched":
+                install_target(**kwargs)
             raise SystemExit(99)
 
         monkeypatch.setattr(ops.controller, "install", interrupted_install)

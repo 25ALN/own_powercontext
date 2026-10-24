@@ -136,6 +136,17 @@ stops a newly started owned target when startup fails. A completed installation 
 status does not rerun readiness checks. Cancellation takes effect at supported safe boundaries and does not promise
 rollback.
 
+If first registration fails before creating a service, release the conflicting port or resolve the reported failure,
+then confirm a fresh install plan and resume the recorded operation. The installation identity and owned configuration
+are retained. A dispatch checkpoint alone does not establish that registration existed. Matching-version CLI and Ops
+removal persist a private removal identity before native changes; an older install operation cannot undo that removal,
+even when no registration existed yet. Pending records without this identity remain readable, but a legacy dispatch
+checkpoint without registration evidence requires inspection rather than automatic replay.
+
+A cancelled installation can reuse verified staging. If regular staged files are corrupt, resume or a new approved
+install operation verifies the recorded directory ownership, discards that exact staging tree and prepares the fixed
+resource again. Replaced directories, links and unsafe ownership are rejected and preserved.
+
 The installer returns its actual endpoint and installation/resource identities. These are not Server deployment or
 Principal identities. The connection layer must validate the actual endpoint and supported public identity and
 compatibility contract before activating a connection or obtaining its default Scope. Installation does not invent a

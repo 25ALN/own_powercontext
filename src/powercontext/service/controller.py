@@ -30,13 +30,19 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import cast
 from urllib.parse import urlsplit
+from uuid import UUID, uuid4
 
 from powercontext.cli.env_file import environment_context
 from powercontext.paths import POWERCONTEXT_HOME_ENV, powercontext_data_dir
 from powercontext.server.configuration import ServerConfigurationError, server_settings_context
 from powercontext.service.adapters import NativeServiceAdapter, native_service_adapter
 from powercontext.service.adapters.base import atomic_write, definition_state, service_python_executable
-from powercontext.service.environment import ProtectedEnvironmentFileError, load_protected_environment_file
+from powercontext.service.environment import (
+    ProtectedEnvironmentFileError,
+    load_protected_environment_file,
+    read_protected_file,
+    write_protected_file,
+)
 from powercontext.service.model import (
     DEFINITION_VERSION,
     OWNERSHIP_MARKER,
@@ -288,6 +294,29 @@ class ServiceController:
     def native_command_path(self) -> Path:
         return self._adapter.lock_path.with_name(f"{self._adapter.lock_path.name}.native-command") / "state.json"
 
+    @property
+    def registration_removal_path(self) -> Path:
+        return self._adapter.lock_path.with_name(f"{self._adapter.lock_path.name}.registration-removal") / "state.json"
+
+    def _registration_removal(self) -> str | None:
+        path = self.registration_removal_path
+        if not path.exists() and not path.is_symlink():
+            return None
+        try:
+            record = json.loads(read_protected_file(path).content)
+            if (
+                not isinstance(record, dict)
+                or set(record) != {"format_version", "removal_id"}
+                or type(record["format_version"]) is not int
+                or record["format_version"] != 1
+                or not isinstance(record["removal_id"], str)
+                or str(UUID(record["removal_id"])) != record["removal_id"]
+            ):
+                raise ValueError("invalid registration removal evidence")  # noqa: TRY003, TRY301
+            return record["removal_id"]
+        except (OSError, ValueError) as error:
+            raise ServiceError("the registration removal evidence cannot be verified") from error  # noqa: TRY003
+
     def start(self) -> ServiceStatus:
         """Start the registered executable without reinstalling or changing configuration."""
 
@@ -442,6 +471,7 @@ class ServiceController:
             "manager": self._adapter.manager_state().value,
             "maintenance": self._maintenance_record(),
             "native_command": native_command_evidence(self.native_command_path),
+            "registration_removal": self._registration_removal(),
         }
 
     def configure(  # noqa: C901
@@ -941,6 +971,16 @@ class ServiceController:
             self._require_mutable_registration(registration)
             loaded = self._adapter.loaded_registration()
             self._require_mutable_manager_registration(loaded)
+            # Persist explicit removal intent before touching the registration.
+            # A first install interrupted before registration is retryable, but
+            # its recovery must never undo a later CLI or Ops removal.
+            try:
+                write_protected_file(
+                    self.registration_removal_path,
+                    json.dumps({"format_version": 1, "removal_id": str(uuid4())}).encode("utf-8"),
+                )
+            except (OSError, ValueError) as error:
+                raise ServiceError("registration removal intent could not be recorded") from error  # noqa: TRY003
             if (
                 registration.state is RegistrationState.NOT_INSTALLED
                 and loaded.state is ManagerOwnershipState.NOT_LOADED
