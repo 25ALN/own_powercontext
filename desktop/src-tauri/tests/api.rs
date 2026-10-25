@@ -192,11 +192,11 @@ async fn request_observations_keep_http_status_and_exclude_private_response_and_
         assert!(!text.contains(private), "{private}");
     }
     // Native preview is the same safe schema as the structured IPC result.
+    // Round-trip the expected JSON too so float parsing has the same rounding behavior.
     let projected: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(
-        projected["recent"],
-        serde_json::to_value(&summary.recent).unwrap()
-    );
+    let expected: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string_pretty(&summary.recent).unwrap()).unwrap();
+    assert_eq!(projected["recent"], expected);
 }
 #[tokio::test]
 async fn errors_are_distinct_without_anonymous_fallback() {
