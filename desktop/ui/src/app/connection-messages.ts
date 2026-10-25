@@ -256,14 +256,19 @@ export const connectionMessages = {
 };
 export function connectionError(error: unknown, language: "zh" | "en"): string {
   const text = connectionMessages[language];
+  const code = connectionErrorCode(error);
+  const key = code === "storage" ? "storage_error" : code;
+  return typeof key === "string" && Object.hasOwn(text, key)
+    ? text[key as keyof typeof text]
+    : text.error;
+}
+
+export function connectionErrorCode(error: unknown): string | null {
   const code =
     typeof error === "string"
       ? error
       : error && typeof error === "object" && "code" in error
         ? error.code
         : null;
-  const key = code === "storage" ? "storage_error" : code;
-  return typeof key === "string" && Object.hasOwn(text, key)
-    ? text[key as keyof typeof text]
-    : text.error;
+  return typeof code === "string" ? code : null;
 }

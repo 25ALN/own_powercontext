@@ -4,6 +4,37 @@ Internal Windows and macOS preview for [#1654](https://github.com/oceanbase/powe
 
 See [中文说明](README.zh.md), [security boundary](SECURITY.md), and [validation guide](VALIDATION.md). This is not a supported or signed release, and does not close #1654 or #1428.
 
+## Observation
+
+The sidebar provides Overview, Connections, Memories, and Observation, with Settings & diagnostics at the bottom. Overview is the initial page. Observation contains Runtime state, Current-Scope inventory & usage, and This session tabs. Their data views are explicitly unavailable until integrated; opening the page or switching tabs does not run connection checks or local diagnostics. English/Chinese and existing theme settings apply to Observation.
+
+
+## Shared feedback and current context
+
+Every page uses the same loading, empty, unavailable and error presentation. Loading local state is distinct from being disconnected; a local-state failure offers **Reload local state**, without probing Server readiness. Empty search results mean no matches for that query, not an empty Scope inventory. Unimplemented Observation views remain unavailable.
+
+Errors explain the affected operation and recovery. Read failures offer an explicit retry; exact reads retain the original Artifact revision. An expired Scope cursor restarts from the first page. Credential, permission and compatibility failures explain the required configuration or authorization change. Save failures keep the draft; unknown writes retain their original target and require the existing confirmation before another submission. Writes are never replayed automatically. Local diagnostic failures offer a retry of the same selected local check and do not indicate remote unavailability.
+
+Draft discard, connection removal and resubmission after an unknown write use an application-owned confirmation dialog in both languages. Cancel is focused initially; Escape or the backdrop cancels, Tab remains within the dialog, and confirming performs only the requested action. The same modal behavior applies to Scope selection. Closing Scope selection restores its actual trigger, or the page heading when that trigger is unavailable.
+
+The global bar shows the active connection, full Server address, Scope title and complete `scope_id` on every page. Identically named Scopes remain distinguishable. Identity, compatibility, liveness and readiness are separate facts; the latest check for the active configuration revision supplies the displayed facts and check time. A healthy Server does not grant operation permissions. Addresses and IDs wrap in small windows. The connection menu supports arrow keys, Home/End and Escape; the Scope dialog constrains focus and restores it when closed.
+
+Settings & diagnostics includes bilingual usage guidance, a locale-specific documentation address and a fixed issue-report address. Copy actions report success or failure; the read-only address fields select their text on focus for manual copying. Help is available without a Server or native connection state. The displayed Desktop version comes from the native host and is Unknown if unavailable.
+
+While a connection operation is pending, a global message remains visible across page changes. You can browse other pages, but Memory editing, saving, searching, exact reads and Scope switching pause until the operation and its native-state refresh finish. This prevents a late activation result from clearing text entered against the old Scope. Once the operation completes, explicitly select an exact Scope if needed. Existing draft confirmations and unknown-write protections continue to apply.
+
+Selecting a saved profile in the global connection menu opens that exact configuration in the editor, including when Connections is already open. Leaving an unsaved editor or Memory draft requires the existing discard confirmation; cancelling preserves the current editor and text. Selecting a configuration never checks or activates it. Explicitly reselecting the same profile after confirming discard reloads its saved values.
+
+Scope selection also keeps an application-wide pending state. Escape, the close button and the backdrop can close the dialog, but do not cancel an accepted native selection. Memory editing and further Scope switching stay paused until it finishes. Closing a dialog whose trigger is disabled returns focus to the page heading. A late result still updates authoritative native state, while it cannot clear a new connection editor's draft guard. Failures after the dialog has closed appear in the shared error feedback.
+
+## Local Server preparation
+
+Overview remains the initial page. In disconnected Memories, **Set up locally** opens and focuses **Settings & diagnostics → Local Server**; **Connect an existing Server** opens the existing connection editor. Selecting either path does not install software, activate a connection, run diagnostics or probe readiness.
+
+The Local Server guidance is also available by opening Settings directly, including when native state is loading or unavailable. It explicitly marks Desktop installation, recovery and service management as unavailable; that status makes no claim about an actual local installation or running service. Settings stays at the bottom of the sidebar.
+
+Prepare a Server independently using [Install and run](../docs/en/docs/get-started/install-and-run.md) and [Deploy the Server](../docs/en/docs/operate/deploy-server.md), observing their platform limits. Confirm the actual address, authentication and a qualified Desktop compatibility profile, then save and explicitly activate the connection and select an exact Scope. A running Server alone does not establish Desktop compatibility. Existing independently running Servers do not need to be reinstalled. The in-app Usage help provides a copyable address for this guide.
+
 ## Run the installed preview
 
 Download and extract `desktop-windows-internal-unsigned` from a successful **Desktop validation** Actions run on this branch. The installer is under `src-tauri/target/release/bundle/nsis/`. Its accompanying `.artifacts/windows-smoke.json` records the commit, SHA-256 and signature status; compare the downloaded installer with `Get-FileHash -Algorithm SHA256 <installer-path>`. The current package is unsigned and intended for internal validation.
@@ -119,7 +150,7 @@ Installed boundary checks exercise an 8192-byte Unicode note, reject over-budget
 
 After upgrading from an earlier preview, open Connections and select your saved connection. Profiles matching the bundled API contract appear under “Available for this Desktop build”; compare their tested Server builds with your deployment before selecting one, saving, checking and explicitly using the connection again. New connections start with no compatibility selection.
 
-Historical profiles appear as disabled records. A saved incompatible or unavailable selection remains visible with an explanation until explicitly replaced; it is never silently upgraded. For the qualified current Server sources, explicitly choose `sqlite-atomic-d9a78567-v1` and check the connection before selecting a Scope; that record's contract digest matches this build's bundled contract, while `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` qualify their corresponding Server source deployments and do not match it. The recorded Server source and wheel identities must match the deployment you intend to use. The independently qualified `ci-fixtures` build is for disposable acceptance tests. Historical qualification evidence and remaining requirements are documented in the [validation guide](VALIDATION.md).
+Historical profiles appear as disabled records. A saved incompatible or unavailable selection remains visible with an explanation until explicitly replaced; it is never silently upgraded. For the qualified current Server sources, explicitly choose `sqlite-atomic-1da99747-v1` and check the connection before selecting a Scope; that record's contract digest matches this build's bundled contract, while `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` qualify their corresponding Server source deployments and do not match it. The recorded Server source and wheel identities must match the deployment you intend to use. The independently qualified `ci-fixtures` build is for disposable acceptance tests. Historical qualification evidence and remaining requirements are documented in the [validation guide](VALIDATION.md).
 
 ## Build on macOS
 

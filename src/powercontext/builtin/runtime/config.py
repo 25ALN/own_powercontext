@@ -314,6 +314,8 @@ class InferenceConfig(BaseModel):
     generation_model_settings: dict[str, JsonValue] = Field(default_factory=dict)
     generation_timeout_seconds: float = Field(default=30.0, gt=0)
     generation_max_requests: int = Field(default=2, ge=1)
+    generation_streaming: Literal["auto", "disabled"] = "disabled"
+    generation_stream_idle_timeout_seconds: float = Field(default=60.0, gt=0)
     generation_model_context_window_tokens: int = Field(default=125_000, ge=1)
     embedding_model: str | None = None
     embedding_base_url: AnyHttpUrl | None = None

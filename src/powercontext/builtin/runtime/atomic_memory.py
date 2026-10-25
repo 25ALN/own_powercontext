@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -86,7 +87,7 @@ from powercontext.builtin.persistence.atomic_memory_index import (
 )
 from powercontext.builtin.persistence.atomic_memory_index_schema import ATOMIC_MEMORY_PROJECTION_FORMAT
 from powercontext.builtin.persistence.cursor_codec import SignedCursorCodec
-from powercontext.builtin.persistence.database import AsyncDatabase
+from powercontext.builtin.persistence.database import SELECTION_BATCH_SIZE, AsyncDatabase
 from powercontext.builtin.persistence.errors import RepositoryNotFoundError
 from powercontext.builtin.persistence.tables import ARTIFACT_HEADS_TABLE, ARTIFACTS_TABLE, MYSQL_IDENTITY_COLLATION
 from powercontext.builtin.persistence.tags import tag_predicate
@@ -128,6 +129,14 @@ def _log_embedding_fallback(error: Exception) -> None:
 class AtomicMemoryAccess(ArtifactMergeAccess):
     def __init__(self) -> None:
         super().__init__("atomic-memory")
+
+    @override
+    async def authorize_creates(self, connection, scope_id, context, refs) -> None:
+        if type(self) is AtomicMemoryAccess:
+            if refs:
+                await super().authorize(connection, scope_id, context, "create")
+            return
+        await super().authorize_creates(connection, scope_id, context, refs)
 
     @override
     async def authorize(

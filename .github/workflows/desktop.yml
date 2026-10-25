@@ -96,13 +96,15 @@ jobs:
       - name: Check installed UI acceptance harness
         working-directory: .
         run: |
-          uv run --no-sync ruff check --no-fix desktop/tests/installed_ui.py desktop/tests/installed_fixture.py desktop/tests/installed_workflow.py desktop/tests/fixture_qualification.py
+          $harnessFiles = @(Get-ChildItem -Path desktop/tests/installed_*.py -File | Sort-Object Name | ForEach-Object { $_.FullName })
+          $harnessFiles += 'desktop/tests/fixture_qualification.py'
+          uv run --no-sync ruff check --no-fix @harnessFiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --no-sync ruff format --check desktop/tests/installed_ui.py desktop/tests/installed_fixture.py desktop/tests/installed_workflow.py desktop/tests/fixture_qualification.py
+          uv run --no-sync ruff format --check @harnessFiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --no-sync ty check desktop/tests/installed_ui.py desktop/tests/installed_fixture.py desktop/tests/installed_workflow.py desktop/tests/fixture_qualification.py
+          uv run --no-sync ty check @harnessFiles
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --no-sync ty check --python-platform linux desktop/tests/installed_ui.py desktop/tests/installed_fixture.py desktop/tests/installed_workflow.py desktop/tests/fixture_qualification.py
+          uv run --no-sync ty check --python-platform linux @harnessFiles
       - name: Check fixture qualification regressions
         working-directory: .
         run: uv run --no-sync python -m pytest tests/test_desktop_fixture_qualification.py
