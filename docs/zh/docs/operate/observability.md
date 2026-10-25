@@ -62,6 +62,12 @@ Server spans 在 `powercontext.error.category` 中使用相同词汇，各 bound
 Supervisor 的 worker 和 wait spans 在跨进程后保留 child 的有限错误分类。
 策略阻塞与 child 取消分别使用 `blocked` 和 `cancelled` outcome，不设置 error span status；
 模型失败保留 timeout、configuration 或 dependency 分类。
+启用流式聚合（`POWERCONTEXT_SERVER_INFERENCE_GENERATION_STREAMING=auto`）时，`unit` 为 `inference` 的
+`inference.generation.usage_missing` WARNING 表示一次 generation 请求成功完成、但 provider 未随流返回 usage，
+该请求的用量统计会缺失。该事件不携带 prompt 或响应内容，也不影响本次请求的结果。
+`auto` 已设置且模型名前缀不属于 `anthropic`、`openai`、`openai-chat`、`openai-responses` 时，`unit` 为
+`inference` 的 `inference.generation.streaming_not_applied` WARNING 表示该模型仍走非流式请求。该事件不携带
+prompt 或响应内容，也不改变本次请求的结果。
 Child 取消时，supervisor 以 `INFO` 级别输出 `artifact_processing.failed`，outcome/category 为 `cancelled`，
 诊断代码为 `worker_cancelled`。Application spans 根据已映射的诊断代码分类，
 即使敏感 exception values 已从 logs 和 traces 中排除，也保留正确分类。

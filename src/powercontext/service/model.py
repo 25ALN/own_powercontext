@@ -27,6 +27,18 @@ DEFINITION_VERSION = 2
 OWNERSHIP_MARKER = "powercontext.personal-server"
 
 
+@dataclass(frozen=True)
+class ServiceTarget:
+    """Exact Server resource identity supplied by a trusted distribution caller."""
+
+    python_executable: str
+    package_version: str
+
+    def __post_init__(self) -> None:
+        if not Path(self.python_executable).is_absolute() or not self.package_version.strip():
+            raise ValueError("a service target requires an absolute executable and package version")  # noqa: TRY003
+
+
 class SupportState(StrEnum):
     SUPPORTED = "supported"
     UNSUPPORTED = "unsupported"
@@ -336,5 +348,6 @@ __all__ = [
     "ServiceDefinition",
     "ServiceError",
     "ServiceStatus",
+    "ServiceTarget",
     "SupportState",
 ]

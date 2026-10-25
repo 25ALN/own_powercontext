@@ -43,7 +43,9 @@ combine that published evidence with new Sources. Cite the evidence that support
 their effective/event dates and conditions. Artifact publication time does not date facts.
 Citing Artifact evidence does not by itself consume that published identity.
 Choose create to retain an independent proposal without consuming related items; it continues to later batches.
-Choose revise to absorb the proposal into one related identity, returning full final kind/text and evidence_ids.
+Choose revise to combine the proposal with exactly one related item, returning full final kind/text and evidence_ids.
+The combined original_refs must contain exactly one distinct published Artifact identity; an empty original_refs
+has no published identity. Revise is invalid when all combined items are unpublished.
 Choose merge to combine the proposal and one or more related items, returning full final kind/text and evidence_ids.
 Multiple existing original_refs require merge; multiple unpublished candidates can merge without creating history.
 Choose noop with one target_id when that item already expresses the proposal, without changing the target content.
@@ -125,7 +127,10 @@ class AtomicMemoryReconciliationOutput(BaseModel):
     )
     content: AtomicMemoryReconciliationContent | None = None
     evidence_ids: tuple[str, ...] = ()
-    reason: str = Field(min_length=1)
+    reason: str = Field(
+        min_length=1,
+        description="One brief sentence explaining the action. Do not repeat the memory content.",
+    )
 
 
 @dataclass(frozen=True)

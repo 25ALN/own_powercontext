@@ -16,6 +16,8 @@
 
 import type { DesktopState } from "../generated/ipc";
 import { messages, type Language } from "./messages";
+import { PageFeedback } from "./PageFeedback";
+import { activeCheckReport } from "./context";
 import memoryIcon from "../assets/memory.svg";
 import connectionsIcon from "../assets/connections.svg";
 import retrievalIcon from "../assets/retrieval.svg";
@@ -38,9 +40,7 @@ export function Overview({
   const t = messages[language];
   const active = state?.active;
   const profile = state?.profiles.find((p) => p.id === active?.connectionId);
-  const report =
-    state?.reports.find((item) => item.connectionId === active?.connectionId) ??
-    active?.report;
+  const report = activeCheckReport(state);
   const readiness = report?.readiness.value?.status;
   const enabled = !!active?.scope && !!report?.compatibilityVerified;
   const principal = report?.anonymousAccess
@@ -89,6 +89,9 @@ export function Overview({
             )}
           </div>
         </div>
+        {refreshing && (
+          <PageFeedback compact kind="loading" title={t.refreshing} />
+        )}
         {active && profile ? (
           <>
             <div className="connection-summary">
@@ -134,18 +137,24 @@ export function Overview({
             </dl>
             <p className="note-line">{t.readinessNote}</p>
           </>
-        ) : (
-          <div className="empty-state">
-            <h3>{t.noActiveTitle}</h3>
+        ) : state ? (
+          <PageFeedback
+            compact
+            headingLevel={3}
+            kind="empty"
+            title={t.noActiveTitle}
+            action={
+              <button
+                className="primary"
+                onClick={() => onNavigate("connections")}
+              >
+                {t.connect}
+              </button>
+            }
+          >
             <p>{t.noActiveBody}</p>
-            <button
-              className="primary"
-              onClick={() => onNavigate("connections")}
-            >
-              {t.connect}
-            </button>
-          </div>
-        )}
+          </PageFeedback>
+        ) : null}
       </section>
       <div className="overview-grid">
         <section className="card">

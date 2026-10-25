@@ -110,10 +110,12 @@ def is_unauthenticated_non_loopback_bind(
 
 
 class HttpConfig(BaseModel):
-    """HTTP listener configuration."""
+    """HTTP listener and process-local admission configuration."""
 
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
+    max_request_body_bytes: int = Field(default=16 * 1024 * 1024, gt=0)
+    max_concurrent_requests: int = Field(default=64, gt=0)
 
 
 class McpConfig(BaseModel):

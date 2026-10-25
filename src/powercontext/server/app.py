@@ -858,6 +858,7 @@ from powercontext.server.dream_compatibility import (
     negotiate_dream_contract,
     require_extended_dream,
 )
+from powercontext.server.request_id import REQUEST_ID_HEADER
 from powercontext.server.tracing import request_id_from_span
 from powercontext.sources import ConnectorBinding as RuntimeConnectorBinding
 from powercontext.sources import SourceDefinitionManifest as RuntimeSourceDefinitionManifest
@@ -867,7 +868,6 @@ if TYPE_CHECKING:
     from powercontext.server.tracing import ServerTracing
 
 _SCALAR_JS_URL = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.66.1"
-REQUEST_ID_HEADER = "X-PowerContext-Request-ID"
 REPORT_SELECTION_DIGEST_HEADER = "X-PowerContext-Selection-Digest"
 REPORT_DIGEST_HEADER = "X-PowerContext-Report-Digest"
 MAX_HANDOFF_REPORT_BYTES = 10 * 1024 * 1024
@@ -1389,7 +1389,7 @@ def create_app(
 
     @app.middleware("http")
     async def attach_request_id(request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request_id_from_span()
+        request_id = current_request_id() or request_id_from_span()
         request.state.request_id = request_id
         token = bind_request_id(request_id)
         try:

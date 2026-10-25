@@ -24,6 +24,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { answerConfirmation } from "./confirmation";
 import { App } from "../src/app/App";
 import { Connections } from "../src/app/Connections";
 import { desktopApi } from "../src/shared/ipc";
@@ -213,8 +214,9 @@ test("canceling discard leaves the saved connection and its draft intact", async
   show();
   await user.click(screen.getByRole("button", { name: /Original/ }));
   await user.type(screen.getByLabelText("Connection name"), " draft");
-  vi.spyOn(window, "confirm").mockReturnValue(false);
+
   await user.click(screen.getByRole("button", { name: "Remove connection" }));
+  await answerConfirmation(user, false);
   expect(desktopApi.remove).not.toHaveBeenCalled();
   expect(
     (screen.getByLabelText("Connection name") as HTMLInputElement).value,
@@ -230,14 +232,19 @@ test("confirmed removal clears the form without asking to discard after deletion
   });
   await user.click(screen.getByRole("button", { name: /Original/ }));
   await user.type(screen.getByLabelText("Connection name"), " draft");
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
   await user.click(screen.getByRole("button", { name: "Remove connection" }));
+  expect(screen.getByRole("alertdialog").textContent).toContain(
+    "Discard unsaved input?",
+  );
+  await answerConfirmation(user, true);
+  expect(screen.getByRole("alertdialog").textContent).toContain(
+    "Remove only this Desktop configuration",
+  );
+  await answerConfirmation(user, true);
   expect(desktopApi.remove).toHaveBeenCalledWith(profile.id, 1);
   expect(onState).toHaveBeenCalled();
-  expect(confirm.mock.calls.map(([message]) => message)).toEqual([
-    "Discard unsaved input?",
-    "Remove only this Desktop configuration and its credentials, without stopping the service or deleting business data?",
-  ]);
+  expect(screen.queryByRole("alertdialog")).toBeNull();
   expect(
     (screen.getByLabelText("Connection name") as HTMLInputElement).value,
   ).toBe("");
@@ -252,8 +259,9 @@ test("missing credentials cannot be retained and entering a new one never activa
     "synthetic-test-secret",
   );
   expect(desktopApi.check).not.toHaveBeenCalled();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+
   await user.click(screen.getByRole("button", { name: "Cancel editing" }));
+  await answerConfirmation(user, true);
   expect(
     (screen.getByLabelText("New Bearer credential") as HTMLInputElement).value,
   ).toBe("");
@@ -289,7 +297,7 @@ test("a save from the previous connection editor cannot dismiss a new draft", as
     finish = resolve;
   });
   vi.mocked(desktopApi.save).mockReturnValueOnce(pendingSave);
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
   render(<App />);
   await user.click(screen.getByRole("button", { name: "连接" }));
   // Let navigation finish moving focus before keyboard input begins.
@@ -312,6 +320,7 @@ test("a save from the previous connection editor cannot dismiss a new draft", as
     }),
   );
   await user.click(screen.getByRole("button", { name: "总览" }));
+  await answerConfirmation(user, true);
   await waitFor(() =>
     expect(document.activeElement).toBe(
       screen.getByRole("heading", { level: 1, name: "总览" }),
@@ -327,9 +336,8 @@ test("a save from the previous connection editor cannot dismiss a new draft", as
   await act(async () => {
     finish(state({ ...profile, name: "First" }));
   });
-  confirm.mockClear().mockReturnValue(false);
   await user.click(screen.getByRole("button", { name: "总览" }));
-  expect(confirm).toHaveBeenCalled();
+  await answerConfirmation(user, false);
   expect((screen.getByLabelText("连接名称") as HTMLInputElement).value).toBe(
     "New draft",
   );

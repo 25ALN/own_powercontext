@@ -294,14 +294,20 @@ def test_healthy_combined_api_exposes_idle_stalled_and_stopped_processing(  # no
                     ):
                         await asyncio.sleep(0.01)
                     # A successful read already in flight when the flag changed
-                    # may publish first. Wait for a new failure, not a historical
-                    # one, before treating the cached snapshot as stable.
+                    # may publish first. Wait for a new failure, then let the cached
+                    # snapshot timestamp settle before comparing it with metrics.
+                    stable_for = 0.0
                     previous = supervisor.family_status["memory"]
-                    while (  # noqa: ASYNC110
-                        supervisor.family_status["memory"]["pending_observation_failures"]
-                        == previous["pending_observation_failures"]
-                    ):
-                        await asyncio.sleep(0.01)
+                    while stable_for < 0.5:
+                        await asyncio.sleep(0.02)
+                        current = supervisor.family_status["memory"]
+                        if (
+                            current["requested_snapshot_timestamp_seconds"]
+                            == previous["requested_snapshot_timestamp_seconds"]
+                        ):
+                            stable_for += 0.02
+                        else:
+                            previous, stable_for = current, 0.0
                 return previous
 
             previous = client.portal.call(fail_observation)

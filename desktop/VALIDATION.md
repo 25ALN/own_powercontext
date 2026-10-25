@@ -22,7 +22,7 @@ cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
 ## Compatibility scope
 
-[compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-atomic-d9a78567-v1` below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
+[compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-atomic-1da99747-v1` below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
 
 The real Server harness covers SQLite with anonymous loopback, static Bearer, HTTPS with explicit CA/base path, and injected-provider/enforced access. It exercises save/search/exact reads, identity changes, binding revocation, ambiguous writes without replay and Scope pagination. Installed UI checks cover repeated launches preserving the existing editor, late committed-save responses preserving a new Scope draft, explicit connection/Scope selection, clipboard copies, connection isolation, draft cancellation, byte limits and independent Server survival after Desktop exit.
 
@@ -30,9 +30,64 @@ Selecting a compatibility profile does not attest the remote binary identity. Ex
 
 ### Current Server protocol qualification
 
+#### Server 1da99747 protocol qualification
+
+`sqlite-atomic-1da99747-v1` qualifies Server sources at
+`1da997476651c2850ff7141e2b7cd512d0152a90` for the bundled OpenAPI digest
+`5878999ce9e239d6642e4da858074b281ed465629432c578b3584eec47cbce6c`. The qualification wheel is
+`powercontext-0.1.dev1120+g2066de01d-py3-none-any.whl`, SHA-256
+`f87da56c813fe0e994ba60c29e8ba99eb48567dc561ac9f19ac2979e0599c1a6`. It was built from clean Desktop commit
+`2066de01dbd27d08eb01a192b5b22be01c688235`; Server sources, OpenAPI, project configuration
+and lock match the recorded Server commit after LF normalization. All 542 packaged
+runtime files in `powercontext/` and `powercontext_service_bootstrap/` were compared with
+that commit. The manifest digest is `716896e084dbaac6a6ea159c7d4e1a47bb741a27afbc8be5b56f548d7ef72ce0`
+(sorted `wheel/path sha256` lines over the wheel's original bytes, with a final newline).
+Windows checkout CRLF differences were normalized for the source comparison only.
+
+On 2026-10-23, Windows x64 with Python 3.12.4 and Rust 1.95.0 ran the
+existing native `ConnectionManager` / `server_probe` against the extracted wheel and
+independent SQLite Server processes. All four modes passed: anonymous loopback, static
+Bearer, HTTPS with explicit CA/base path, and injected-provider/enforced access. The ten
+operations cover Atomic Memory save/search/exact revision reads, Scope selection and
+pagination, identity changes, same-identity revocation, committed writes with lost responses
+without replay, and independent Server survival after client exit.
+
+Reproduce the protocol check from a clean checkout with the pinned tools:
+
+```powershell
+uv build --wheel --out-dir desktop/.artifacts/server-wheel
+cargo build --locked --manifest-path desktop/src-tauri/Cargo.toml --example server_probe
+uv run --locked python desktop/tests/fixture_qualification.py --server-commit 1da997476651c2850ff7141e2b7cd512d0152a90
+uv run --locked python desktop/tests/real_server.py
+```
+
+Use an empty wheel output directory. The harness supplies a separate candidate fixture profile;
+the bundled product record above is backed by its completed four-mode results and the verified
+source/artifact identities. Ordinary builds require explicit profile selection and a connection
+check; historical profiles remain unchanged. Local evidence is under ignored
+`desktop/.artifacts/real-server.json` and `.artifacts/desktop-shell/current-contract-wheel-identity.json`.
+This establishes protocol compatibility for the recorded sources and wheel, without qualifying
+installed UI, credential-store prompts, signing, macOS execution, IME or screen-reader behavior.
+
+2026-10-23，Windows x64 的原生连接管理器对独立 wheel／SQLite Server 完成四种真实协议验收，
+覆盖匿名、Bearer、HTTPS／反向代理路径及注入认证／权限控制。新资格记录绑定上述源码、
+合同和 wheel 摘要；542 个运行时文件与指定提交在统一换行符后逐一核对，历史记录保持不变。
+普通构建需明确选择新配置并检查连接。该记录验证协议兼容性，不代表安装包、凭据库提示、
+签名、macOS、IME 或屏幕阅读器验收通过。
+
+The qualification regression `bundled_qualification_allows_explicit_scope_browsing` and the
+complete default-feature Rust test suite passed with this record. All 86 frontend tests,
+typecheck, lint, production build, generated-contract/icon checks, IPC export checking,
+Rust fmt/all-target clippy and five fixture qualification regressions passed. Native test
+output is under ignored `.artifacts/desktop-shell/current-contract-native-tests.log`.
+新记录下原失败用例与完整 Rust 测试通过，86 项前端测试及相关构建、静态和生成检查通过。
+Repository hooks passed except the existing Windows Python type errors in unchanged code;
+see ignored `.artifacts/desktop-shell/current-contract-prek.log`.
+仓库全量钩子仍有未修改代码的既存 Windows Python 类型错误，其余钩子通过。
+
 #### Server d9a78567 protocol qualification
 
-The bundled contract is qualified by `sqlite-atomic-d9a78567-v1`. The record identifies Server
+The corresponding historical preview contract is qualified by `sqlite-atomic-d9a78567-v1`. The record identifies Server
 sources at `d9a785675dedb72cd72a386b346e590f4c067ac0` and normalized OpenAPI digest
 `a6758fd35296abefb55ab86b152584a369d5f2deedfee7a3f9822e16ad1edc25`.
 The qualification wheel is `powercontext-1.4.1.dev69+ga200d6094.d20261022-py3-none-any.whl`,
@@ -139,7 +194,7 @@ matching `sqlite-atomic-caf2a35a-v1`. The observed app is identified by the exec
 this record does not identify its exact build source revision. This is historical evidence, not a
 procedure or native UI qualification for the current bundled contract.
 
-The current `sqlite-atomic-d9a78567-v1` record has non-GUI protocol evidence on Linux x86_64 only.
+The `sqlite-atomic-d9a78567-v1` record has non-GUI protocol evidence on Linux x86_64 only.
 Native macOS save/search/exact-read and clipboard acceptance against that record remains unverified.
 
 The normal release app (without `ci-fixtures`) was operated on macOS 26.5.2 ARM64 against the
@@ -194,6 +249,135 @@ DESKTOP_FIXTURE_COMMIT=$(git rev-parse HEAD)
 uv run python desktop/tests/fixture_qualification.py --server-commit "$DESKTOP_FIXTURE_COMMIT"
 pnpm --dir desktop desktop:build:windows:ci
 ```
+
+## Observation navigation (#2102)
+
+The application opens Overview and provides Overview, Connections, Memories, and Observation in the main navigation. Settings & diagnostics remains at the bottom. Observation provides Runtime state, Current-Scope inventory & usage, and This session tabs with unavailable data views; navigation does not initiate connection checks or local diagnostics.
+
+Local verification on Windows x64 on 2026-10-21 used Node 24.14.1, pnpm 11.13.1, and Rust 1.95.0 for generated-contract checking. All 37 UI tests, type checking, lint, and the frontend production build passed. Existing Overview, connection, Memory, Scope and diagnostic behavior tests remain in place; Observation tests cover navigation, English/Chinese, keyboard tabs, unavailable states and the existing draft confirmation.
+
+Headless Edge 155.0.4283.62 with synthetic IPC checked all five pages in 24 combinations of English/Chinese, light/dark/system, and CSS viewports 1180×800, 800×600, 400×400 and 400×300. The pages had no horizontal overflow. At desktop widths, Settings & diagnostics had the same coordinates with and without the Observation entry; at small widths it remained below the main navigation. The 400×300 viewport at device scale factor 2 checks layout equivalent to 800×600 at 200%, not installed WebView zoom. Browser fixtures and mocked IPC do not establish real Server, installed-package, native IME, screen-reader or macOS qualification.
+
+应用默认进入总览，主导航包含总览、连接、记忆、观察，“设置与诊断”位于底部。观察包含运行状态、当前 Scope 库存与用量、本次会话三个标签页，数据视图尚未可用；页面及标签切换不会执行连接检查或本机诊断。
+
+2026-10-21 在 Windows x64 上使用 Node 24.14.1、pnpm 11.13.1 验证，生成合同检查使用 Rust 1.95.0。37 项 UI 测试、类型检查、lint 和前端生产构建通过。原有业务行为测试保留，观察测试覆盖导航、双语、键盘标签切换、不可用状态和现有草稿确认。
+
+无头 Edge 155.0.4283.62 使用合成 IPC 检查中英文、三种主题及上述四组 CSS 视口，共 24 种组合，五个页面没有横向溢出。在桌面宽度下，有无观察入口时“设置与诊断”的坐标一致；小窗口中它仍位于主导航下方。400×300 配合设备缩放因子 2 仅检查 800×600 在 200% 下的等效布局，不代表安装版 WebView 缩放。真实 Server、安装包、原生 IME、屏幕阅读器和 macOS 仍需实际验收。
+
+
+## Shared feedback and global context (#2102)
+
+On 2026-10-22, Windows x64 local checks used Node 24.14.1, pnpm 11.13.1 and Rust 1.95.0. Focused feedback/context tests and all 50 frontend tests passed, together with typecheck, lint (including generated contracts and icons in check mode) and production build. Coverage includes pending/failed/disconnected initialization, local-state recovery without readiness probes, same-name Scope IDs, latest matching connection facts, identity/health/compatibility separation, prerequisite recovery, Scope pagination recovery, failed exact-read retries retaining the original revision, preserved drafts, local diagnostics, keyboard menus and modal focus. Existing save, unknown-write and late-response protections remain covered.
+
+Headless Edge 155.0.4283.62 with synthetic IPC exercised all five pages in 48 combinations: connected/disconnected, English/Chinese, light/dark/system, and CSS viewports 1180×800, 800×600, 400×400 and 400×300. Long addresses and Scope IDs, permission errors, Scope selection and missing-local-CLI errors had no horizontal overflow. A forced-colors run checked pending-search feedback. Screenshots were inspected for the 800×600 Scope dialog and forced-colors loading view. The 400×300 viewport with device scale factor 2 is a layout equivalent of 800×600 at 200%, not actual installed WebView zoom.
+
+These checks use browser fixtures and mock IPC. No real native/backend, installer, platform IME or screen-reader acceptance was executed for this change. Repository-wide `uv run --locked prek run -a` retains the existing Windows `ty check` failures involving `os.O_NOFOLLOW`, `fcntl` and `resource` in unchanged Python code; other hooks passed. Logs and browser evidence are under ignored `.artifacts/desktop-shell/`.
+
+2026-10-22 在 Windows x64 上使用上述固定工具版本，专项测试及全部 50 项前端测试、typecheck、lint 和生产构建通过。测试覆盖加载／失败／未连接区分、恢复入口、同名 Scope 的完整 ID、最新匹配连接事实、身份／健康／兼容性分别表达、原版本精确读取重试、草稿保护及键盘焦点。
+
+Edge 合成 IPC 检查覆盖上述 48 组配置和五个页面，包含权限及本机诊断错误、长地址和 Scope ID、Scope 弹窗，无横向溢出；另检查强制高对比度的加载反馈并查看截图。200% 为等效布局检查。本次没有执行真实原生／后端、安装包、平台 IME 或屏幕阅读器验收。仓库检查中，未修改 Python 代码的 Windows 类型检查存在上述既有错误，其余钩子通过。
+
+## Save outcome recovery (#2102)
+
+On 2026-10-22, mocked-IPC UI tests verified that a resolved `WriteOutcome` with `record.status: "failed"` and `forbidden` displays the same permission recovery guidance as the exception path in English and Chinese, preserves the draft and dirty state, and does not replay the write. Unknown-write coverage verifies that cancelling resubmission sends no request and explicit confirmation permits a new submission. All 16 Memory tests and all 52 frontend tests passed, along with typecheck, lint and production build using the pinned tools above. No real native/backend or installed-package acceptance was executed for this fix. Repository hooks retain the existing Windows Python `ty check` failures described above.
+
+2026-10-22 的模拟 IPC 测试验证：确定失败的保存结果显示与异常分支一致的中英文权限恢复说明，保留草稿及未保存状态，不自动重放写入；未知写入取消再次提交时不发请求，确认后才提交。16 项 Memory 测试、全部 52 项前端测试、typecheck、lint 和生产构建通过。本次未执行真实原生／后端或安装包验收；仓库钩子仍有上述既有 Windows Python 类型检查错误。
+
+## Help and pending-connection protection (#2102)
+
+On 2026-10-22, the pinned Windows tools above ran all 62 frontend tests, typecheck, lint and production build successfully. Ten focused help/connection tests cover bilingual guidance, fixed-address copying, success/failure feedback, keyboard selection for manual copying, offline access, native/unknown version display, pending activation and active-connection recheck across page changes, native failure recovery, overlapping checks, explicit Scope selection and the new draft's discard guard. Existing late-write, unknown-write and editor lifetime tests remain passing.
+
+Headless Edge 155.0.4283.62 exercised 18 combinations of English/Chinese, light/dark/system and CSS viewports 800×600, 400×400 and 400×300. Synthetic IPC delayed activation across Memory and Settings navigation; the old context stayed non-editable, completion required a new Scope, and cancellation of navigation preserved a new draft. Clipboard stubs checked the locale-specific documentation address, copy failure and manual address selection. Help, pending feedback and confirmation paths had no horizontal overflow. An additional forced-colors view was inspected. The 400×300 viewport at device scale factor 2 is a layout equivalent of 800×600 at 200%, not installed WebView zoom.
+
+Screenshots of help copy failure and pending activation were inspected. Evidence is under ignored `.artifacts/desktop-shell/help-transition-*`. Clipboard stubs and synthetic IPC do not qualify the native clipboard, actual Server or installed WebView. No installer, platform IME, screen-reader or macOS acceptance was executed for these changes. Repository hooks retain the previously documented Windows Python `ty check` failures; the other hooks passed.
+
+2026-10-22 使用上述固定工具版本，全部 62 项前端测试、typecheck、lint 和生产构建通过。新增 10 项专项测试覆盖双语帮助、固定地址复制与失败后的手动复制、离线入口、原生／未知版本，以及跨页激活等待、失败恢复、重叠请求和新草稿确认保护。原有晚到写入、未知写入及连接编辑器保护测试继续通过。
+
+Edge 检查覆盖中英文、三种主题和上述三个窗口尺寸的 18 组组合。合成 IPC 与剪贴板桩验证帮助复制、跨页等待、旧上下文不可编辑、完成后显式选择 Scope 及新草稿导航取消；页面没有横向溢出，并检查强制高对比度视图及截图。200% 为等效布局检查。本次未执行原生剪贴板、真实 Server、安装包、IME、屏幕阅读器或 macOS 验收；仓库钩子仍有既有 Windows Python 类型检查错误，其余通过。
+
+## Disconnected paths and Local Server guidance (#2102)
+
+On 2026-10-22, the pinned Windows tools above passed all 68 frontend tests, typecheck, lint and production build. Six focused UI tests cover the English/Chinese disconnected Memory choices, focused navigation to the Local Server section, the existing connection editor handoff, Settings access during pending/failed native-state loading, unchanged Overview/default navigation, the editor's discard guard and exact Scope selection for an already active connection. No installer, connection activation, readiness check or local diagnostic is triggered by these navigation paths.
+
+Headless Edge 155.0.4283.62 with synthetic IPC checked 72 combinations: English/Chinese, light/dark/system, native state disconnected/loading/error, and CSS viewports 1180×800, 800×600, 400×400 and 400×300. Both disconnected paths worked, the targeted Local Server heading received focus and remained unobscured, keyboard Tab/Enter reached the connection editor, and the pages had no horizontal overflow. A forced-colors offline view was also checked. Screenshots of the 800×600 disconnected entry and focused Local Server section were inspected. Evidence is under ignored `.artifacts/desktop-shell/local-server*`.
+
+The 400×300 viewport at device scale factor 2 checks layout equivalent to 800×600 at 200%, not installed WebView zoom. Synthetic IPC does not establish real Server, installed-package, IME, screen-reader or macOS acceptance; those were not executed for this change. Repository hooks retain the previously documented Windows Python `ty check` failures; the other hooks passed.
+
+2026-10-22 使用固定工具版本，全部 68 项前端测试、typecheck、lint 和生产构建通过。新增 6 项测试覆盖双语双路径、Local Server 定向焦点、现有连接编辑器接入、原生状态加载／失败时离线可达、默认总览及原有草稿／Scope 保护。进入这些页面不会安装软件、激活连接、执行诊断或探测 readiness。
+
+Edge 合成 IPC 检查覆盖上述 72 组组合；定向焦点未被顶栏遮挡，键盘可继续进入连接编辑器，无横向溢出，并检查了离线强制高对比度视图及截图。200% 为等效布局验证。本次未执行真实 Server、安装包、平台 IME、屏幕阅读器或 macOS 验收。仓库钩子仍有既有 Windows Python 类型检查错误，其余通过。
+
+## Pending Scope selection and targeted profile navigation (#2102)
+
+On 2026-10-22, the pinned Windows tools above passed all 78 frontend tests, typecheck, lint and production build. Ten focused regressions cover closing pending Scope selection with Escape, the close button or backdrop; old-context editing remains paused, success updates the exact Scope, and a failure after closure appears in shared error feedback. A late Scope result cannot clear a new connection editor's draft guard. Tests also cover cancelling Scope selection before dispatch, opening the requested profile without activating it, cancelled cross-page/same-page profile navigation, repeated selection of the same profile ID, and a late save from a replaced editor.
+
+Headless Edge 155.0.4283.62 exercised 48 synthetic-IPC combinations: English/Chinese, light/dark/system, successful/failed delayed Scope selection, and CSS viewports 1180×800, 800×600, 400×400 and 400×300. After Escape, focus returned to the page heading and old-Scope editing stayed disabled. Navigation opened the requested configuration; pending Scope completion preserved the new editor's draft confirmation. Confirm/cancel, same-ID reselection, and Memory draft navigation were exercised. Profile selection triggered no connection check, activation or save. These paths had no horizontal overflow. Pending-Scope and forced-colors error/editor screenshots were inspected; evidence is under ignored `.artifacts/desktop-shell/scope-profile*` and `scope-pending-closed-800.png`.
+
+The 400×300 viewport at device scale factor 2 is layout equivalent to 800×600 at 200%, not installed WebView zoom. These UI checks use synthetic IPC and do not establish real native/backend, installed-package, IME, screen-reader or macOS qualification; those were not executed for this fix. Rust IPC and persistence formats remain unchanged. Repository hooks retain the previously documented Windows Python `ty check` failures; the other hooks passed.
+
+2026-10-22 使用固定工具版本，全部 78 项前端测试、typecheck、lint 和生产构建通过。新增 10 项回归覆盖 Scope 等待时通过 Escape／关闭按钮／遮罩关闭、旧上下文暂停编辑、成功与失败恢复、晚到结果不清除新连接草稿保护，以及指定配置导航、同页／跨页取消、同 ID 重选和旧编辑器晚到保存。
+
+Edge 合成 IPC 验证上述 48 组组合，检查焦点恢复、指定配置接入、Scope 晚到响应后的草稿保护、确认／取消、同 ID 重选及无隐式连接检查；页面无横向溢出，并检查了等待状态与强制高对比度错误视图截图。200% 为等效布局验证。本次未执行真实原生／后端、安装包、IME、屏幕阅读器或 macOS 验收。仓库钩子仍有既有 Windows Python 类型检查错误，其余通过。
+
+## macOS application navigation and confirmations
+
+On 2026-10-22, macOS 26.5.1 Apple Silicon checks used Node 24.14.1, pnpm 11.13.1 and Rust 1.95.0. Frontend behavior tests, typecheck, lint, generated-contract/icon checks, Rust fmt/clippy and native tests pass. Confirmation tests operate the application dialog rather than replacing a host dialog: they cover bilingual cancel/confirm, Escape, focus containment, retained drafts, two-stage connection removal, unknown-write resubmission, and Scope changes while confirmation is pending.
+
+The actual debug `.app` was built with `pnpm --dir desktop tauri build --debug --bundles app --ci -- --locked`. Its bundled `tauri://localhost` page loads without Vite and its native state/version IPC works. In that packaged WebView, English/Chinese draft navigation and cancel-editing confirmations, explicit discard, Escape cancellation, Tab/Shift+Tab containment, and an 800×600 English confirmation were exercised. After clicking a local diagnostic and then the Scope trigger, Escape restores focus to the Scope trigger. Pending Scope selection and nested confirmation remain covered by UI behavior tests with simulated IPC; no real Server was used for these packaged UI checks.
+
+The native navigation policy permits the platform's local application origin and rejects external, other-platform, credential-bearing and explicitly ported packaged addresses. macOS uses `tauri://localhost`; Windows uses `http://tauri.localhost`. This does not qualify signing/notarization, Intel Mac, IME, VoiceOver, native 200% zoom, Keychain, local CLI diagnostics, or installed Server workflows.
+
+2026-10-22 在 macOS 26.5.1 Apple Silicon 上，使用上述固定工具完成前端行为测试、类型检查、lint、生成合同／图标检查及 Rust fmt、clippy 和原生测试。确认测试实际操作应用内对话框，覆盖双语确认／取消、Escape、焦点循环、草稿保留、两步移除配置、未知写入再次提交，以及确认期间 Scope 改变时不提交旧草稿。
+
+实际构建并启动 debug `.app`，其 `tauri://localhost` 页面不依赖 Vite，原生状态和版本 IPC 正常。在打包 WebView 中验证了双语草稿导航、取消编辑、确认丢弃、Escape 取消、Tab／Shift+Tab 和 800×600 英文确认框；先点击本机诊断再点击 Scope，Escape 后焦点返回实际 Scope 按钮。等待中的 Scope 和嵌套确认由模拟 IPC 的行为测试覆盖；本次打包 UI 检查未连接真实 Server。
+
+导航白名单按平台仅放行本地应用 origin，同时拒绝外部、其他平台、带用户信息或显式端口的打包地址。上述结果不代表签名／公证、Intel Mac、IME、VoiceOver、原生 200% 缩放、Keychain、本机 CLI 诊断或安装版 Server 工作流通过。
+
+## Installed confirmation automation
+
+On 2026-10-22, Windows x64 checks used the pinned Node 24.14.1, pnpm 11.13.1 and Rust 1.95.0 tools. The installed acceptance harness checks the exact accessible description of the application's `alertdialog`, clicks its localized cancel/confirm button through WebDriver and waits for that prompt to leave. A different prompt fails acceptance. Consecutive discard/removal prompts are handled independently. Single-instance acceptance also checks that cancelled navigation retains the connection draft and confirmed navigation reaches Overview. Lifecycle acceptance is included explicitly in the CI lint, formatting and Windows/Linux type checks.
+
+Edge and Edge WebDriver 155.0.4283.62 exercised these harness methods against the current Vite UI with synthetic IPC. Calling the native alert endpoint while the application dialog was open reproduced HTTP 404 with `no such alert`. Application-dialog checks passed for rejected prompt mismatches, draft navigation cancellation/confirmation, nested Scope selection, disconnect cancellation/confirmation, consecutive profile-removal prompts and unknown-write resubmission. Cancelling the latter dispatched zero writes; explicit confirmation dispatched one. Evidence is under ignored `.artifacts/desktop-shell/confirmation-webdriver-results.json`.
+
+All 37 focused confirmation/connection/Memory/Scope tests and all 82 frontend tests passed, together with typecheck, lint, generated-contract/icon checks and production build. All five fixture qualification regressions passed. Repository-wide `uv run --locked prek run -a` passed every hook except the existing Windows Python `ty check` failures in unchanged code (`os.O_NOFOLLOW`, `fcntl`, `resource` and `os.mkfifo`); its log is under `.artifacts/desktop-shell/confirmation-prek.log`. This browser execution uses synthetic IPC and does not qualify native single-instance launches, actual Server writes or the installed package. The complete `windows-smoke.ps1` installation workflow requires a fresh hosted CI run. Platform IME and screen-reader qualification remain pending.
+
+2026-10-22，Windows x64 使用项目固定工具版本验证安装验收脚本。脚本核对应用内确认框的完整无障碍描述，通过 WebDriver 点击“取消”或“确认”，并等待当前提示离开；提示不符时验收失败，连续的丢弃／移除确认分别处理。单实例场景继续验证取消导航后连接草稿保留、确认后进入总览；生命周期脚本已显式纳入 CI 静态检查。
+
+真实 Edge 与 Edge WebDriver 155.0.4283.62 操作当前 Vite 页面，IPC 使用合成数据。应用内确认框打开时，原生 alert 接口返回 `404 no such alert`。修正后的脚本通过提示不匹配拒绝、草稿导航、嵌套 Scope 确认、断开连接、连续移除确认及未知写入确认检查；未知写入取消时请求数为零，明确确认后为一。37 项专项测试、全量 82 项前端测试、typecheck、lint、生成检查和构建通过；五项 fixture 回归通过。仓库全量钩子仍有未修改 Python 代码的 Windows 类型检查错误，其余钩子通过。这些证据不代表原生单实例、真实 Server 或安装包验收通过；完整安装流程仍需托管 CI 重跑，IME 和屏幕阅读器保持待验收。
+
+## Harness coverage and navigation policy
+
+On 2026-10-23, the Windows CI harness checks use one PowerShell-expanded list: all five `desktop/tests/installed_*.py` modules, including `installed_boundaries.py`, plus `desktop/tests/fixture_qualification.py`. All six files passed Ruff lint, format checks and Windows/Linux `ty check` using the exact file selection and argument splatting from the workflow. All five fixture qualification regressions passed. Future `installed_*.py` modules enter the same four checks automatically.
+
+Each platform branch of the packaged navigation allowlist explicitly requires no non-default port. The rejection table covers both `http://tauri.localhost:8000` and `tauri://localhost:8000`, alongside the existing origin and user-info restrictions. On Windows x64 with Rust 1.95.0, the focused navigation regression, all four IPC tests, `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` passed. These are native policy/mock-IPC checks; no installer, real Server, macOS or Android execution was performed for this change.
+
+2026-10-23，Windows CI 的四项 harness 静态检查共用 PowerShell 展开的文件清单：五个 `desktop/tests/installed_*.py` 模块（包含 `installed_boundaries.py`）及 `fixture_qualification.py`，共六个文件。按工作流相同的文件选择和数组参数传递方式，Ruff、格式检查及 Windows／Linux 类型检查全部通过，五项 fixture 回归通过；后续新增的同名前缀模块自动进入四项检查。
+
+打包导航白名单的各平台分支均明确要求无非默认端口，拒绝表同时覆盖 HTTP 和 Tauri 地址的 `:8000`。Windows x64 使用 Rust 1.95.0 完成专项导航回归、全部四项 IPC 测试、fmt 和全目标 clippy。此处为原生策略及 mock IPC 验证，未执行安装包、真实 Server、macOS 或 Android 验收。
+
+## Reopened profile drafts and same-page Scope recovery
+
+On 2026-10-23, Windows x64 checks used Node 24.14.1, pnpm 11.13.1 and Rust 1.95.0 for generated-contract checking. A profile revision refresh resets only a clean connection editor. A new draft entered after reopening the same profile remains intact when the earlier save completes, including when its native state clears the active connection. The new draft retains its discard confirmation, and explicitly cancelling editing loads the saved revision. Scope recovery restores focus to the page title even when Connections is already the current page; its existing draft is preserved.
+
+Regression tests reproduced draft replacement and body focus before the fixes. All 38 focused connection/confirmation/Scope/feedback tests and all 86 frontend tests passed, together with typecheck, lint, generated-contract/icon checks and production build. Headless Edge 155.0.4283.62 with synthetic IPC passed eight combinations of English/Chinese, 800×600/400×400 CSS viewports and save responses retaining/clearing the active connection. Checks cover pending-save reopening, preserved new drafts and discard guards, explicit editor reset, same-page recovery focus and absence of horizontal overflow. Evidence is under ignored `.artifacts/desktop-shell/review-draft-focus-results.json`. This does not qualify native persistence, the installed package, IME or screen-reader behavior.
+
+2026-10-23，Windows x64 使用项目固定工具版本验证：配置版本更新仅同步没有新草稿的编辑器；保存期间重新打开同一配置后输入的新草稿及离开确认不会被旧响应覆盖，响应清除活动连接时也适用。明确取消编辑后加载已保存版本。Scope 恢复入口即使留在连接页，也将焦点恢复到页面标题并保留已有草稿。
+
+回归测试在修复前复现了草稿被覆盖及焦点落到 body。38 项专项测试、全量 86 项前端测试、typecheck、lint、生成检查与构建通过。Edge 合成 IPC 检查覆盖中英文、800×600／400×400 及两种活动连接结果，共八组；草稿、确认、重置及恢复焦点正常，页面无横向溢出。此证据不代表原生持久化、安装包、IME 或屏幕阅读器验收通过。
+
+Repository-wide `uv run --locked prek run -a` passed all hooks except the existing Windows Python `ty check` failures in unchanged code; see ignored `.artifacts/desktop-shell/review-draft-focus-prek.log`. 仓库全量钩子仍有未修改 Python 代码的既存 Windows 类型检查错误，其余钩子通过。
+
+## Desktop integration with master 1da99747
+
+On 2026-10-23, Windows x64 integration checks used Node 24.14.1, pnpm 11.13.1 and Rust 1.95.0. Packaged navigation follows master's macOS-specific origin policy, while mock IPC retains Tauri's runtime origin selection. Navigation tests preserve both branches' rejected addresses, explicit port rejection, allowed application paths and rejection of the other platform's origin. Master's native credential backends and the shared layout's draft/focus protections remain in place.
+
+All 86 frontend tests, typecheck, lint, production build, generated-contract/icon checks and IPC export checking passed. Rust fmt, all-target clippy, all four IPC tests and all nine transport tests passed. All six installed-harness Python files passed Ruff lint/format and Windows/Linux type checks; all five fixture qualification regressions passed. Repository hooks passed except the existing Windows Python type errors in unchanged code; see ignored `.artifacts/desktop-shell/merge-master-prek.log`.
+
+The bundled contract digest `5878999ce9e239d6642e4da858074b281ed465629432c578b3584eec47cbce6c` is qualified by [Server 1da99747](#server-1da99747-protocol-qualification). The complete Rust test suite, including `bundled_qualification_allows_explicit_scope_browsing`, passes with this record. Installed Windows and macOS workflows require their separate acceptance checks.
+
+2026-10-23，合入 master `1da99747` 后，Windows x64 的全量 86 项前端测试、类型检查、lint、构建、生成合同／图标与 IPC 导出检查通过；Rust fmt、全目标 clippy、四项 IPC 测试及六个验收 Python 文件的静态检查、五项 fixture 回归通过。导航测试同时保留 master 的平台策略与本分支的端口、跨平台来源和应用路径保护，原生凭据支持及草稿／焦点修复均保留。
+
+九项传输测试全部通过。当前合同由上述 Server 1da99747 真实协议验收记录资格化，完整 Rust 测试（含随包兼容资格用例）通过。仓库全量钩子仍有未修改代码的既存 Windows Python 类型错误，其余钩子通过。上述结果不代表安装包或 macOS 验收通过。
 
 ## Remaining release qualification
 
