@@ -22,13 +22,68 @@ cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
 ## Compatibility scope
 
-[compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-atomic-1da99747-v1` below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
+[compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-atomic-98275dbb-v1` below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-atomic-1da99747-v1`, `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
 
 The real Server harness covers SQLite with anonymous loopback, static Bearer, HTTPS with explicit CA/base path, and injected-provider/enforced access. It exercises save/search/exact reads, identity changes, binding revocation, ambiguous writes without replay and Scope pagination. Installed UI checks cover repeated launches preserving the existing editor, late committed-save responses preserving a new Scope draft, explicit connection/Scope selection, clipboard copies, connection isolation, draft cancellation, byte limits and independent Server survival after Desktop exit.
 
 Selecting a compatibility profile does not attest the remote binary identity. Existing `sqlite-1.1.1-v1` / `sqlite-63f918b7-v1` / `sqlite-ab43e3a7-v1` / `sqlite-f1089f4e-v1` / `sqlite-6e237568-v1` / `sqlite-legacy-58f7f4f6-v1` selections require explicitly choosing an available matching profile and rechecking the connection. Desktop reads memories only through Atomic Memory references, so Servers that answer only with Memory entry citations are not qualified. CLI diagnostics separately verify the registered executable path and digest, then validate the diagnostic response schema. The observed version is optional report information; a registration does not require a version.
 
 ### Current Server protocol qualification
+
+#### Server 98275dbb protocol qualification
+
+`sqlite-atomic-98275dbb-v1` qualifies Server sources at
+`98275dbbb745cea6d905eb6fdd2eac70197d0127` for the bundled OpenAPI digest
+`3165f114185aa403b563c936d5fbd0829388628f4a37540d9d1519202a07871c`. The qualification wheel is
+`powercontext-1.4.1.dev175+g98275dbbb-py3-none-any.whl`, SHA-256
+`970fa0eb6b3d0f728e8a4a92ca2a9d9435c38380e162a0a3386f503738378c36`, built from that clean commit.
+All 551 packaged runtime files in `powercontext/` and `powercontext_service_bootstrap/`
+match the recorded commit byte for byte. The runtime manifest digest is
+`328fc51cc6320458a28700c45e7fca96bb24ffdd03242a578f5765f74a14cb05`
+(sorted `wheel/path sha256` lines, with a final newline). The OpenAPI contract,
+project configuration and lock also match the recorded commit.
+
+On 2026-10-25, Linux x86_64 with Python 3.12.13 and Rust 1.95.0 ran the existing
+`desktop/tests/real_server.py` harness against the extracted wheel and independent
+SQLite Server processes. All four modes passed: anonymous loopback, static Bearer,
+HTTPS with an explicit CA and base path, and an injected provider with enforced access.
+The ten recorded operations cover Atomic Memory save/search/exact revision reads,
+Scope selection and pagination, identity changes, same-identity revocation, committed
+writes with lost responses without replay, and independent Server survival after client exit.
+
+The native client compiled the unmodified product `connections`, `credentials`, `error`
+and `transport` modules and the existing `server_probe.rs`, using dependency versions
+and checksums from the product Cargo lock. The standalone library excludes the Tauri
+GUI shell because the Linux environment lacks WebKit development libraries. This
+qualifies the stated SQLite protocol behavior; Windows/macOS packaging, native vaults,
+installed UI, signing, IME and screen-reader behavior require their own platform checks.
+
+From the recorded checkout, the existing harness prepares a candidate profile from
+the exact wheel before exercising it:
+
+```sh
+uv sync --frozen --python 3.12
+uv build --wheel --out-dir desktop/.artifacts/server-wheel
+cargo build --locked --manifest-path desktop/src-tauri/Cargo.toml --example server_probe
+uv run --no-sync python desktop/tests/fixture_qualification.py --server-commit 98275dbbb745cea6d905eb6fdd2eac70197d0127
+uv run --no-sync python desktop/tests/real_server.py
+```
+
+Use an empty wheel output directory and a platform with the Desktop native build
+dependencies for the Cargo command. Linux protocol-only runs can compile the four
+unchanged modules and `server_probe.rs` in a standalone library with the product lock's
+dependency versions. The completed run's ignored evidence is
+`desktop/.artifacts/real-server.json` and
+`desktop/.artifacts/qualification-wheel-identity.json`. Historical profiles retain their
+exact identities and evidence; ordinary builds require explicit selection of the matching
+profile and a connection check.
+
+2026-10-25，Linux x86_64 的原生连接管理器对独立 wheel／SQLite Server 完成四种真实协议验收，
+覆盖匿名、Bearer、HTTPS／反向代理路径及注入认证／权限控制。551 个运行时文件、OpenAPI、
+项目配置和锁文件均与记录的源码提交逐一核对。该资格记录绑定上述源码、契约和 wheel 摘要；
+历史记录保持原有身份与证据。原生客户端使用未修改的产品模块及现有探针，依赖版本和校验和
+与产品 Cargo 锁文件一致。本次未运行 Tauri 图形界面、Windows／macOS 安装包、原生凭据库、
+签名、IME 或屏幕阅读器验收。
 
 #### Server 1da99747 protocol qualification
 
