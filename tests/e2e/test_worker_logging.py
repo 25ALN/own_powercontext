@@ -21,14 +21,11 @@ import io
 import json
 import logging
 import multiprocessing
-import selectors
-import socket
 import subprocess
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from threading import Event
 from typing import Any
 
 import pytest
@@ -95,34 +92,29 @@ def _noisy_logging_worker(assignment: ArtifactProcessingWorkAssignment) -> Artif
     return ArtifactProcessingWorkerCompletion()
 
 
-def _large_logging_probe(initializer: WorkerLogging) -> None:
+def _closing_logging_probe(initializer: WorkerLogging, *, truncate: bool) -> None:
     initializer()
-    logging.getLogger("powercontext.worker.probe").info("Large observation %s", "x" * 200_000)
+    logging.getLogger("powercontext.worker.probe").info("Delivered observation")
+    if truncate:
+        assert initializer.channel is not None
+        # Leave one incomplete envelope before the process closes its socket.
+        initializer.channel.sendall(b'"' + _PRIVATE.encode("utf-8"))
 
 
-def test_discarded_worker_record_is_counted_in_prometheus(tmp_path, monkeypatch, capfd) -> None:
+@pytest.mark.parametrize("truncate", [False, True])
+def test_worker_stream_close_preserves_output_and_counts_discards(tmp_path, capfd, truncate) -> None:
     registry = CollectorRegistry()
     registry.register(OperationalMetricsCollector(role="background"))
     metric = "powercontext_server_telemetry_log_records_dropped_total"
     before = registry.get_sample_value(metric)
     assert before is not None
-    resume = Event()
-    select = selectors.DefaultSelector.select
-
-    def delayed_select(selector, timeout=None):
-        resume.wait(timeout=30)
-        return select(selector, timeout)
-
-    monkeypatch.setattr(selectors.DefaultSelector, "select", delayed_select)
     config = ServerLoggingConfig(file=True, directory=tmp_path, format="json")
     with worker_logging(config, role="background") as initializer:
         assert isinstance(initializer, WorkerInitializerPreparation)
         with initializer.prepare() as child_initializer:
             assert isinstance(child_initializer, WorkerLogging)
-            assert child_initializer.channel is not None
-            child_initializer.channel.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
             process = multiprocessing.get_context("spawn").Process(
-                target=_large_logging_probe, args=(child_initializer,)
+                target=_closing_logging_probe, args=(child_initializer,), kwargs={"truncate": truncate}
             )
             process.start()
         try:
@@ -133,11 +125,13 @@ def test_discarded_worker_record_is_counted_in_prometheus(tmp_path, monkeypatch,
                 process.kill()
                 process.join(timeout=5)
             process.close()
-            resume.set()
-    assert registry.get_sample_value(metric) == before + 1
+    assert registry.get_sample_value(metric) == before + int(truncate)
     output = capfd.readouterr()
-    assert "observability.log_failed" in output.err
-    assert "Large observation" not in output.out + output.err
+    assert ("observability.log_failed" in output.err) == truncate
+    records = (tmp_path / "background.log").read_text(encoding="utf-8")
+    assert [record["message"] for record in _json_records(records)] == ["Delivered observation"]
+    assert output.out == ""
+    assert _PRIVATE not in records + output.err
 
 
 def test_worker_completion_does_not_wait_for_slow_log_consumer(tmp_path) -> None:
