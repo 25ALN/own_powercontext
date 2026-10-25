@@ -16,7 +16,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import binascii
+import hashlib
 from collections.abc import Mapping
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -28,6 +33,7 @@ from pydantic import ValidationError
 
 from powercontext.server.dashboard.api import DashboardAPI, ReadError, segment
 from powercontext.server.dashboard.content import RECORDS, load_content, load_profile, load_record
+from powercontext.server.dashboard.images import image_evidence_view, image_request_view
 from powercontext.server.dashboard.markdown import handoff_markdown
 from powercontext.server.dashboard.navigation import (
     collection_return,
@@ -39,7 +45,7 @@ from powercontext.server.dashboard.navigation import (
 from powercontext.server.dashboard.page import load_builtin_page
 from powercontext.server.dashboard.pagination import PAGE_SIZE
 from powercontext.server.dashboard.preferences import CATALOGS, presentation, remember_language
-from powercontext.server.dashboard.presenters import set_scope, source_view
+from powercontext.server.dashboard.presenters import image_source_view, set_scope, source_view
 from powercontext.server.dashboard.review import load_review, load_review_inspection, submit_review
 from powercontext.server.dashboard.session import login_response, same_origin
 
@@ -50,6 +56,7 @@ PAGES = {
     "home",
     "handoff",
     "notes",
+    "images",
     "methods",
     "topics",
     "prompts",
@@ -111,6 +118,8 @@ def links(request: Request, ctx: dict[str, Any]):
                     "handoff_revision_cursor",
                     "kind",
                     "cursor",
+                    "image_cursor",
+                    "image_history",
                     "experience_cursor",
                     "skill_cursor",
                     "q",
@@ -202,8 +211,14 @@ def _drop_foreign_revision_cursors(query: dict[str, Any], params: dict[str, Any]
 def reading_link_context(
     request: Request, ctx: dict[str, Any], destination: str, params: dict[str, Any], query: dict[str, Any]
 ) -> None:
-    if destination.startswith("evidence/") and ctx["page"] in {"profile", "handoff-detail"} and ctx.get("return_to"):
-        query["return_to"] = ctx["return_to"]
+    if destination.startswith("evidence/"):
+        if note := ctx.get("selected_note"):
+            query.update(
+                artifact=note["artifact_id"],
+                revision=note["revision"],
+            )
+        if ctx["page"] in {"profile", "handoff-detail"} and ctx.get("return_to"):
+            query["return_to"] = ctx["return_to"]
     if destination in {"handoff-detail", "handoff-download"}:
         source_return = (
             directory_context(request, ctx["scope"], "handoff", ctx["language"])
@@ -244,6 +259,7 @@ def initial_context(request: Request, page: str) -> dict[str, Any]:
             "title": "PowerContext",
             "summary": "",
             "notes": [],
+            "images": [],
             "handoff": None,
             "experience": None,
             "skill": None,
@@ -275,6 +291,8 @@ def initial_context(request: Request, page: str) -> dict[str, Any]:
         "profile_history_view": request.query_params.get("view") == "history",
         "profile_revisions": [],
         "profile_pager": None,
+        "image_pager": None,
+        "image_status": None,
         "profile_html": "",
         "history": None,
         "prompt_key": None,
@@ -393,7 +411,7 @@ async def index(request: Request) -> RedirectResponse:
 @router.get("/evidence/{source_id:path}")
 async def evidence(request: Request, source_id: str) -> HTMLResponse:
     origin = request.query_params.get("origin", "experience")
-    ctx = initial_context(request, origin if origin in RECORDS or origin == "profile" else "experience")
+    ctx = initial_context(request, origin if origin in RECORDS or origin in {"profile", "notes"} else "experience")
     api = DashboardAPI(request)
     ctx.update(source_id=source_id, origin=ctx["page"], source_type=request.query_params.get("source_type", ""))
     try:
@@ -401,6 +419,8 @@ async def evidence(request: Request, source_id: str) -> HTMLResponse:
         await scope_context(api, ctx, descriptor)
         if ctx["page"] == "profile":
             await load_profile(api, request, ctx, include_history=False)
+        elif ctx["page"] == "notes":
+            await load_content(api, request, ctx)
         else:
             await load_record(api, request, ctx, include_history=False)
         if not any(
@@ -412,7 +432,10 @@ async def evidence(request: Request, source_id: str) -> HTMLResponse:
         value = await api.read(
             f"/v1/scopes/{segment(ctx['scope'])}/sources/{segment(ctx['source_type'])}/{segment(source_id)}"
         )
-        ctx["source"] = source_view(value)
+        if ctx["source_type"] in {"image.original", "image.interpretation", "experimental.image.analysis"}:
+            ctx["source"] = image_source_view(await image_evidence_view(api, ctx["scope"], value), ctx["scope"])
+        else:
+            ctx["source"] = source_view(value)
     except ReadError as error:
         if error.status == 401:
             return login_response(request=request)
@@ -420,6 +443,90 @@ async def evidence(request: Request, source_id: str) -> HTMLResponse:
     finally:
         await api.client.aclose()
     return render(request, ctx, "evidence.html", "source.html")
+
+
+@router.get("/image-task/{task_id}")
+async def image_task(request: Request, task_id: str) -> HTMLResponse:
+    ctx = initial_context(request, "images")
+    api = DashboardAPI(request)
+    ctx.update(source_id="", origin="images", source_type="experimental.image.analysis")
+    try:
+        descriptor = await default_scope(api, ctx)
+        await scope_context(api, ctx, descriptor)
+        task = await image_request_view(api, ctx["scope"], task_id)
+        ctx["source"] = image_source_view(task, ctx["scope"])
+        ctx["source_id"] = ctx["source"]["source_id"]
+    except ReadError as error:
+        if error.status == 401:
+            return login_response(request=request)
+        ctx.update(page_error=error, status=error.status)
+    finally:
+        await api.client.aclose()
+    return render(request, ctx, "evidence.html", "source.html")
+
+
+def _thumbnail(data: bytes) -> bytes:
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(data)) as image:
+        if image.width * image.height > 20_000_000:
+            raise ValueError("image_pixel_budget")
+        # PNG transparency may be an alpha band or a palette/color-key entry.
+        # Normalize before resizing so every representation keeps its opacity.
+        image = ImageOps.exif_transpose(image).convert("RGBA")
+        image.thumbnail((480, 320))
+        pixels = Image.new("RGB", image.size, "white")
+        pixels.paste(image, mask=image.getchannel("A"))
+        with BytesIO() as buffer:
+            pixels.save(buffer, format="JPEG", quality=80)
+            return buffer.getvalue()
+
+
+@router.get("/image-thumbnails/{asset_id}")
+async def image_thumbnail(request: Request, asset_id: str) -> Response:
+    if not hasattr(request.app.state, "image_thumbnail_limit"):
+        request.app.state.image_thumbnail_limit = asyncio.Semaphore(2)
+    async with request.app.state.image_thumbnail_limit:
+        response = await image_asset(request, asset_id)
+        if response.status_code != 200:
+            return response
+        try:
+            data = await asyncio.to_thread(_thumbnail, bytes(response.body))
+        except (OSError, ValueError, ImportError):
+            return Response(status_code=503, headers={"Cache-Control": "no-store"})
+        return Response(
+            data,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Vary": "Cookie, Authorization",
+            },
+        )
+
+
+@router.get("/image-assets/{asset_id}")
+async def image_asset(request: Request, asset_id: str) -> Response:
+    api = DashboardAPI(request)
+    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Vary": "Cookie, Authorization"}
+    try:
+        value = await api.read(
+            "/v1/media/assets/get",
+            {"scope_id": request.query_params.get("scope", ""), "asset_id": asset_id},
+        )
+        data = base64.b64decode(value["bytes_base64"], validate=True)
+        if (
+            len(data) != value["asset"]["byte_size"]
+            or "sha256:" + hashlib.sha256(data).hexdigest() != value["asset"]["digest"]
+        ):
+            raise ReadError(500, "image_asset_corrupt")  # noqa: TRY301 - verified download at the HTTP boundary
+        return Response(data, media_type=value["asset"]["media_type"], headers=headers)
+    except ReadError as error:
+        return Response(status_code=error.status, headers=headers)
+    except (ValueError, KeyError, TypeError, binascii.Error):
+        return Response(status_code=502, headers=headers)
+    finally:
+        await api.client.aclose()
 
 
 def validate_download(request: Request, scope: str, artifact: str) -> None:

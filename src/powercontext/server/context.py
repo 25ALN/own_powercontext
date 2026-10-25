@@ -19,7 +19,7 @@ from __future__ import annotations
 from contextvars import ContextVar, Token
 
 from powercontext.server.authentication import AuthenticationResult
-from powercontext.server.authz import PrincipalRef
+from powercontext.server.authz import AccessAuditContext, PrincipalRef
 
 _internal_bridge: ContextVar[bool] = ContextVar("powercontext_internal_bridge", default=False)
 _request_id: ContextVar[str | None] = ContextVar("powercontext_request_id", default=None)
@@ -81,7 +81,21 @@ def is_internal_bridge() -> bool:
     return _internal_bridge.get()
 
 
+def access_audit_context(operation: str) -> AccessAuditContext:
+    """Preserve trusted identity facts across authorization boundaries."""
+
+    authentication = current_authentication()
+    return AccessAuditContext(
+        transport="mcp" if is_internal_bridge() else "http",
+        operation=operation,
+        request_id=current_request_id(),
+        actor=None if authentication is None else authentication.actor,
+        subject_groups=() if authentication is None else authentication.subject_groups,
+    )
+
+
 __all__ = [
+    "access_audit_context",
     "bind_authentication",
     "bind_internal_bridge",
     "bind_principal",

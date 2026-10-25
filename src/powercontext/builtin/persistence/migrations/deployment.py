@@ -28,6 +28,7 @@ from powercontext.builtin.persistence.sqlite import SQLiteConfig
 
 from .bundle import MigrationBundle
 from .connections import MaintenanceConnections
+from .media import MediaMigrationRunner
 from .models import MigrationError
 from .mysql import MySQLMigrationRunner
 from .sqlite import SQLiteMigrationRunner
@@ -42,19 +43,25 @@ def production_bundle() -> MigrationBundle:
     return MigrationBundle(Path(__file__).parent / "resources")
 
 
-MigrationRunner = SQLiteMigrationRunner | MySQLMigrationRunner | TopicMemoryRecoveryMigrationRunner
+MigrationRunner = (
+    SQLiteMigrationRunner | MySQLMigrationRunner | TopicMemoryRecoveryMigrationRunner | MediaMigrationRunner
+)
 
 
-def deployment_runner(
+def deployment_runner(  # noqa: C901 - explicit registered bundle/backend routing
     settings: ServerSettings,
     *,
     evidence_dir: Path | None = None,
     lock_coordination: Literal["single-host"] | None = None,
     acknowledge_previous_run: str | None = None,
-    bundle: Literal["artifacts", "topic-memory-recovery"] = "artifacts",
+    bundle: Literal["artifacts", "topic-memory-recovery", "media"] = "artifacts",
 ) -> MigrationRunner:
     """Use the real configured identity without opening a business profile."""
     database = settings.database
+    if bundle == "media":
+        if not isinstance(database, SQLiteConfig):
+            raise MigrationError("unsupported_backend", "The media bundle currently supports file SQLite only.")
+        return MediaMigrationRunner(database, evidence_directory=evidence_dir)
     if bundle == "topic-memory-recovery":
         if not isinstance(database, (SQLiteConfig, SeekDBConfig, OceanBaseConfig)):
             raise MigrationError("unsupported_backend", "The database has no Topic recovery migration adapter.")

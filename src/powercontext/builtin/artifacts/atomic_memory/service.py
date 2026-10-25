@@ -48,6 +48,7 @@ from powercontext.builtin.artifacts.atomic_memory.models import (
     AtomicMemoryWrite,
     PreparedAtomicMemory,
 )
+from powercontext.builtin.artifacts.atomic_memory.ordering import validate_memory_ordering
 from powercontext.builtin.artifacts.memory.canonical import canonical_error_code, normalize_text
 from powercontext.builtin.artifacts.memory.errors import InvalidMemoryCandidateError
 from powercontext.builtin.artifacts.merge import ArtifactMergeSecurity, ArtifactMergeService, MergeTags
@@ -260,7 +261,8 @@ class AtomicMemoryMergeAdapter:
             raise InvalidMemoryCandidateError(
                 "canonical", str(error), canonical_code=canonical_error_code(error)
             ) from error
-        content = content.model_copy(update={"text": text})
+        ordering = None if content.ordering is None else content.ordering.normalized(content.kind, text)
+        content = content.model_copy(update={"text": text, "ordering": ordering})
         if merge_inputs:
             content = content.model_copy(
                 update={
@@ -562,6 +564,26 @@ class AtomicMemoryService:
         direct_sources: Sequence[SourceRef | None] | None = None,
         source_read_set: _SourceReadSet | None = None,
     ) -> tuple[AtomicMemoryMutationResult, ...]:
+        for item in prepared:
+            for write in item.plan.writes:
+                if write.draft is None:
+                    continue
+                try:
+                    await validate_memory_ordering(
+                        connection,
+                        scope_id,
+                        write.draft,
+                        self.artifacts.source_repository,
+                        self.artifacts,
+                        authorize_sources=lambda refs: self.security.authorize_sources(
+                            connection, scope_id, context, refs
+                        ),
+                        authorize_artifact=lambda ref: self.security.authorize(
+                            connection, scope_id, context, "read", ref
+                        ),
+                    )
+                except ValueError as error:
+                    raise AtomicMemoryRelationError("ordering-invalid") from error
         results = await self.shared.commit_window(
             connection,
             scope_id,

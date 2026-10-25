@@ -16,6 +16,7 @@
 
 import json
 from typing import Any
+from urllib.parse import urlencode
 
 from powercontext.server.dashboard.errors import ReadError
 
@@ -34,6 +35,31 @@ def source_view(source: dict[str, Any] | None) -> dict[str, Any] | None:
     return {
         **source,
         "text": content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, indent=2),
+    }
+
+
+def image_source_view(task: dict[str, Any], scope: str) -> dict[str, Any]:
+    """Present the exact saved task and interpretation, never the latest reparse."""
+    original = task["original_payload"]
+    analysis = task.get("analysis_payload")
+    return {
+        "source_id": task["analysis"]["source"]["source_id"] if analysis else task["original"]["source"]["source_id"],
+        "text": "",
+        "image": {
+            "task_id": task["task_id"],
+            "state": task["state"],
+            "error_code": task["error_code"],
+            "attempt_count": task["attempt_count"],
+            "max_attempts": task["max_attempts"],
+            "asset": original["asset"],
+            "origin": original["origin"],
+            "host_image": original["origin"].get("representation") == "host_image",
+            "profile_digest": task["profile_digest"],
+            "output": None if analysis is None else analysis["output"],
+            "profile": None if analysis is None else analysis["profile"],
+            "asset_url": "/dashboard/image-assets/" + original["asset"]["asset_id"] + "?" + urlencode({"scope": scope}),
+            "original_source_id": task["original"]["source"]["source_id"],
+        },
     }
 
 
@@ -83,3 +109,12 @@ def usage_view(usage: dict[str, Any], recall: dict[str, Any]) -> dict[str, Any]:
         "end": usage["period"]["end_date"],
         "days": len(daily),
     }
+
+
+def evidence_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Select retained text and image analysis materials for the evidence page."""
+    return [
+        source
+        for source in sources
+        if source["source_type"] in {"content", "image.original", "image.interpretation", "experimental.image.analysis"}
+    ]

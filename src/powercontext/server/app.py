@@ -159,6 +159,7 @@ from powercontext.builtin.handoff_report import (
     HandoffReportTooLargeError,
 )
 from powercontext.builtin.inference.errors import InferenceTimeoutError, InferenceUnavailableError
+from powercontext.builtin.media.errors import MediaError
 from powercontext.builtin.persistence.agent_skill_targets import RemoteAgentSkillTarget
 from powercontext.builtin.persistence.artifact_governance import (
     ArtifactGovernance,
@@ -583,7 +584,6 @@ from powercontext.http import (
     SourceObservationReceipt,
     SourcePage,
     SourceRecord,
-    SourceType,
     SubmitSourceObservationRequest,
     TopicMemoryArtifact,
     UnpublishRemoteSkillRequest,
@@ -683,6 +683,7 @@ from powercontext.http._generated.operations import (
     APPROVE_CANDIDATE,
     BIND_ARTIFACT_HANDLE,
     CAPTURE_CONTENT_SOURCE,
+    CAPTURE_IMAGE,
     CAPTURE_WORKING_NOTE,
     CHECK_ACCESS,
     CLEAR_SCOPE_BINDING,
@@ -720,6 +721,8 @@ from powercontext.http._generated.operations import (
     GET_EXPERIENCE,
     GET_HANDOFF_REPORT,
     GET_LIVENESS,
+    GET_MEDIA_ASSET,
+    GET_MEDIA_REQUEST,
     GET_MEMORY_CAPACITY,
     GET_MEMORY_ENTRY,
     GET_MEMORY_ENTRY_TAGS,
@@ -747,6 +750,7 @@ from powercontext.http._generated.operations import (
     LIST_DREAM_RUNS,
     LIST_EXTERNAL_SKILLS,
     LIST_MANAGED_SKILLS,
+    LIST_MEDIA_REQUESTS,
     LIST_MEMORY_CHANGES,
     LIST_MEMORY_ENTRIES,
     LIST_REMOTE_SKILL_TARGETS,
@@ -778,6 +782,7 @@ from powercontext.http._generated.operations import (
     REPLACE_ARTIFACT,
     REPLACE_ARTIFACT_TAGS,
     REPLACE_MEMORY_ENTRY_TAGS,
+    REQUEST_IMAGE_ANALYSIS,
     RESOLVE_ARTIFACT_HANDLE,
     RESOLVE_EXTERNAL_SKILL,
     RESOLVE_SCOPE_BINDING,
@@ -808,7 +813,6 @@ from powercontext.server.atomic_memory import record_response as atomic_record_r
 from powercontext.server.authentication import AuthenticationProvider
 from powercontext.server.authz import (
     AccessAction,
-    AccessAuditContext,
     AccessAuditEvent,
     AccessBinding,
     AccessBindingNotFoundError,
@@ -845,11 +849,12 @@ from powercontext.server.authz.models import (
 from powercontext.server.authz.profiles import ARTIFACT_FAMILY_PROFILES, artifact_family_profile
 from powercontext.server.authz.service import _require_allowed
 from powercontext.server.context import (
+    access_audit_context as _access_audit_context,
+)
+from powercontext.server.context import (
     bind_request_id,
-    current_authentication,
     current_principal,
     current_request_id,
-    is_internal_bridge,
     reset_request_id,
 )
 from powercontext.server.dream_access import DreamAccess, principal_identity
@@ -857,6 +862,14 @@ from powercontext.server.dream_compatibility import (
     LEGACY_DREAM_OPERATIONS,
     negotiate_dream_contract,
     require_extended_dream,
+)
+from powercontext.server.images import (
+    ImageBodyLimitMiddleware,
+    capture_image,
+    get_media_asset,
+    get_media_request,
+    list_media_requests,
+    request_image_analysis,
 )
 from powercontext.server.request_id import REQUEST_ID_HEADER
 from powercontext.server.tracing import request_id_from_span
@@ -1360,6 +1373,7 @@ def create_app(
         middleware=list(middleware),
     )
     app.openapi_version = OPENAPI_VERSION
+    app.add_middleware(ImageBodyLimitMiddleware)
     app.state.application = application
     app.state.capability_provider = capability_provider
     app.state.readiness_probe = readiness_probe
@@ -1426,6 +1440,7 @@ def create_app(
     @app.exception_handler(BaseAccessError)
     @app.exception_handler(PromptError)
     @app.exception_handler(SourceNotEligibleError)
+    @app.exception_handler(MediaError)
     @app.exception_handler(PowerContextError)
     @app.exception_handler(PersistenceError)
     async def application_error(request: Request, error: Exception) -> JSONResponse:
@@ -1450,6 +1465,11 @@ def create_app(
         _add_route(app, GET_LIVENESS, get_liveness)
         return app
 
+    _add_route(app, CAPTURE_IMAGE, capture_image)
+    _add_route(app, GET_MEDIA_ASSET, get_media_asset)
+    _add_route(app, GET_MEDIA_REQUEST, get_media_request)
+    _add_route(app, LIST_MEDIA_REQUESTS, list_media_requests)
+    _add_route(app, REQUEST_IMAGE_ANALYSIS, request_image_analysis)
     _add_route(app, CREATE_DREAM_RUN, create_dream_run)
     _add_route(app, GET_DREAM_RUN, get_dream_run)
     _add_route(app, LIST_DREAM_RUNS, list_dream_runs)
@@ -2512,7 +2532,16 @@ async def flush_profile(
 
 async def get_source(
     scope_id: Annotated[str, Path(min_length=1, max_length=256, pattern=r".*\S.*")],
-    source_type: Annotated[Literal["content"], Path()],
+    source_type: Annotated[
+        Literal[
+            "content",
+            "image.original",
+            "image.interpretation",
+            "experimental.image.original",
+            "experimental.image.analysis",
+        ],
+        Path(),
+    ],
     source_id: Annotated[str, Path(min_length=1, max_length=256, pattern=r".*\S.*")],
     http_request: Request,
     application: Annotated[ServerApplication, Depends(_require_application)],
@@ -2989,14 +3018,7 @@ async def get_artifact_revision(
 
 
 def _source_record_response(value: RuntimeSourceRecord) -> SourceRecord:
-    return SourceRecord(
-        scope_id=value.scope_id,
-        source_type=SourceType(value.source_type),
-        source_id=value.source_id,
-        content=value.content,
-        position=value.position,
-        content_digest=value.content_digest,
-    )
+    return SourceRecord.model_validate(value.model_dump(mode="json"))
 
 
 def _transport_actor(actor: ArtifactRevisionActor | None) -> TransportAccessPrincipal | None:
@@ -4129,8 +4151,8 @@ async def _validate_shareable_resource(application: ServerApplication | None, re
         return
     if profile.family == "memory":
         raise BaseOperationNotSupportedError("artifact_family", "memory", "collection share target")
-    if profile.family == "atomic-memory":
-        await application.records.for_scope(resource.scope_id).get_artifact("atomic-memory", identity.artifact_id)
+    if profile.family in {"atomic-memory", "image-analysis"}:
+        await application.records.for_scope(resource.scope_id).get_artifact(profile.family, identity.artifact_id)
         return
     if profile.family in {"experience", "skill", "profile"}:
         await _validate_shareable_managed_artifact(
@@ -4632,17 +4654,6 @@ def _require_principal() -> PrincipalRef:
     if principal is None:
         raise AccessIdentityRequiredError
     return principal
-
-
-def _access_audit_context(operation: str) -> AccessAuditContext:
-    authentication = current_authentication()
-    return AccessAuditContext(
-        transport="mcp" if is_internal_bridge() else "http",
-        operation=operation,
-        request_id=current_request_id(),
-        actor=None if authentication is None else authentication.actor,
-        subject_groups=() if authentication is None else authentication.subject_groups,
-    )
 
 
 def _access_principal(value: TransportAccessPrincipal) -> PrincipalRef:
@@ -5170,7 +5181,9 @@ def _path_artifact_access(
     *,
     action: AccessAction,
 ) -> tuple[tuple[AccessAction, ResourceRef], ...]:
-    family = _path_artifact_family(payload)
+    family = (
+        _path_artifact_read_family(payload) if action is AccessAction.ARTIFACT_READ else _path_artifact_family(payload)
+    )
     return (
         (
             action,
@@ -5661,6 +5674,8 @@ def _map_error(error: Exception) -> tuple[int, str, str, dict[str, Any] | None]:
         )
     if isinstance(error, CodeError):
         return error.status, error.code, "The code query could not be completed.", None
+    if isinstance(error, MediaError):
+        return error.status_code, error.code, "The image operation failed.", None
     access_error = _map_access_error(error)
     if access_error is not None:
         return access_error

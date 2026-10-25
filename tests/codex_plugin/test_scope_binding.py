@@ -30,7 +30,10 @@ def _operations_with_scope_mode(scope_mode: str) -> frozenset[str]:
     return frozenset(
         value.operation_id
         for value in vars(generated_operations).values()
-        if isinstance(value, generated_operations.Operation) and value.scope_mode == scope_mode
+        if isinstance(value, generated_operations.Operation)
+        and value.scope_mode == scope_mode
+        # Media operations are HTTP-only, outside the MCP tool catalog.
+        and not {"images", "media"}.intersection(value.tags)
     )
 
 
@@ -73,6 +76,35 @@ def test_pre_tool_hook_overwrites_agent_scope_with_session_binding(
 def test_pre_tool_hook_scope_modes_match_generated_openapi_metadata(bind_tools_module: ModuleType) -> None:
     assert bind_tools_module._CURRENT_OPERATIONS == CURRENT_OPERATIONS
     assert bind_tools_module._SELECTION_OPERATIONS == SELECTION_OPERATIONS
+
+
+@pytest.mark.parametrize(
+    "operation",
+    sorted(
+        value.operation_id
+        for value in vars(generated_operations).values()
+        if isinstance(value, generated_operations.Operation) and {"images", "media"}.intersection(value.tags)
+    ),
+)
+def test_http_only_image_operations_are_not_fabricated_as_mcp_tools(
+    operation: str, bind_tools_module: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            json.dumps({
+                "session_id": "session-a",
+                "cwd": "/workspace",
+                "tool_name": f"mcp__powercontext__{operation}",
+                "tool_input": {"scope_id": "agent-selected"},
+            })
+        ),
+    )
+    output = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", output)
+    assert bind_tools_module.main() == 0
+    assert output.getvalue() == ""
 
 
 @pytest.mark.parametrize("operation", sorted(CURRENT_OPERATIONS))

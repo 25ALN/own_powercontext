@@ -1,0 +1,41 @@
+<!--
+Copyright (c) 2026 OceanBase.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+{% from 'components/page-heading.html' import page_heading %}
+{% from 'components/pagination.html' import pagination %}
+{{ page_heading(t.images, t.images_subtitle) }}
+{% if image_status %}
+<p class="text-secondary">{{ t.images_enabled if image_status.enabled else t.images_disabled }} · {{ t.images_model_missing if not image_status.vision_configured else "" }}</p>
+{% if image_status.error_code %}<p class="alert alert-warning" role="status">{{ image_status.error_code }}</p>{% endif %}
+{% endif %}
+<div class="row row-cards">
+{% for item in data.images %}
+  <article class="col-md-6 col-xl-4"><div class="card h-100">
+    <a href="{{ link('image-task/' ~ item.task.task_id) }}" hx-boost="false">
+      <img class="card-img-top" style="height: 180px; object-fit: contain" src="{{ link('image-thumbnails/' ~ item.asset.asset_id) }}" alt="{{ t.images_preview }}" loading="lazy">
+    </a>
+    <div class="card-body">
+      <p class="mb-2"><span class="badge bg-secondary-lt">{{ t.get('image_state_' ~ item.task.state, item.task.state) }}</span></p>
+      <p class="small text-secondary">{{ item.created_at or t.images_date_unknown }} · {{ item.asset.width }} × {{ item.asset.height }} · {{ item.asset.byte_length }} B<br>{{ item.origin.client_variant or item.origin.kind }}</p>
+      {% if item.task.error_code %}<p class="text-danger small">{{ item.task.error_code }}</p>{% endif %}
+      <a class="btn btn-outline-primary" href="{{ link('image-task/' ~ item.task.task_id) }}" hx-boost="false">{{ t.images_open }}</a>
+    </div>
+  </div></article>
+{% else %}
+  <div class="col-12"><div class="empty"><p class="empty-title">{{ t.images_empty }}</p><p class="empty-subtitle">{{ t.images_empty_help if image_status and image_status.enabled and image_status.available and image_status.vision_configured and not image_status.error_code else t.images_setup_help }}</p></div></div>
+{% endfor %}
+</div>
+{{ pagination(image_pager, t) }}

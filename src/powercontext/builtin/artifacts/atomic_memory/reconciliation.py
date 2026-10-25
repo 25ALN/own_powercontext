@@ -26,6 +26,17 @@ from powercontext.artifacts import ArtifactRef
 from powercontext.builtin.artifacts.atomic_memory.errors import AtomicMemoryConflictError
 from powercontext.builtin.artifacts.atomic_memory.extraction import LANGUAGE_RULES, TIME_RULES, AtomicMemoryEvidence
 from powercontext.builtin.artifacts.atomic_memory.models import AtomicMemoryContent, AtomicMemoryRead
+from powercontext.builtin.artifacts.atomic_memory.ordering import (
+    MAX_ORDERING_STATEMENTS,
+    MemoryOrderingSupport,
+    MemoryStatementComparison,
+    MemoryStatementSelection,
+    MemoryStatementSupport,
+    StatementEvidence,
+    can_replace_statement,
+    memory_content_digest,
+    unknown_memory_ordering,
+)
 from powercontext.builtin.inference import InvalidInferenceOutputError
 from powercontext.sources import SourceRef
 
@@ -43,6 +54,10 @@ combine that published evidence with new Sources. Cite the evidence that support
 their effective/event dates and conditions. Artifact publication time does not date facts.
 Citing Artifact evidence does not by itself consume that published identity.
 Choose create to retain an independent proposal without consuming related items; it continues to later batches.
+Every create, revise or merge must return non-null content containing the full final kind and text, even when
+unchanged from the proposal. Only noop may omit content; action and reason never substitute for the final facts.
+content contains only kind and text. evidence_ids, compared_ids, target_ids, action and reason are top-level
+output fields, never fields inside content. Do not copy evidence_ids or original_refs into content.
 Choose revise to combine the proposal with exactly one related item, returning full final kind/text and evidence_ids.
 The combined original_refs must contain exactly one distinct published Artifact identity; an empty original_refs
 has no published identity. Revise is invalid when all combined items are unpublished.
@@ -60,6 +75,16 @@ historical and late old evidence must not become current. Keep facts that can ch
 different applicability separate. Keep each identity's final decision consistent with previously combined working
 content. Preserve independent historical events, conditions, exceptions and effective dates.
 Never request approval or store conflict markers.
+Return statements covering every retained clause verbatim. Each selects supplied evidence IDs, optionally an
+explicit effective_date copied from that evidence and applicability. Never construct anchors or use consumption
+journal positions for delayed facts. Artifact statement_evidence_ids select that exact statement's saved basis;
+the whole Artifact evidence ID denotes an unknown aggregate basis, never a lineage maximum or minimum.
+When any evidence is derived, return statement_comparisons for every statement of every related item (use its
+ordering.statements, or index 0 for unknown whole text). State independent for different facts/applicability;
+same_fact identifies competing values. Name the incoming statement and its supplied evidence IDs. Explicit event
+dates take precedence when comparable. With missing or older basis, preserve existing current facts; do not create
+a conflicting current copy. Other independent facts can still be created. Empty statements on legacy output mean
+unknown support; they never authorize constructing new Source anchors.
 {LANGUAGE_RULES}
 Preserve the language of retained, unchanged published facts. Express genuinely new or corrected facts in the
 language of their supporting Source statements; unrelated new evidence must not cause existing facts to be translated.
@@ -74,6 +99,7 @@ class AtomicMemoryComparisonItem(BaseModel):
     text: str
     original_refs: tuple[AtomicMemoryRead, ...]
     evidence_ids: tuple[str, ...]
+    ordering: MemoryOrderingSupport | None = None
 
 
 class AtomicMemoryArtifactEvidence(BaseModel):
@@ -83,6 +109,7 @@ class AtomicMemoryArtifactEvidence(BaseModel):
     evidence_id: str
     artifact_ref: ArtifactRef
     content: AtomicMemoryContent
+    statement_evidence_ids: tuple[str, ...] = ()
 
 
 AtomicMemoryReconciliationEvidence = AtomicMemoryEvidence | AtomicMemoryArtifactEvidence
@@ -112,6 +139,8 @@ class AtomicMemoryReconciliationContent(BaseModel):
         content = AtomicMemoryContent.model_validate(value)
         if content.creation is not None:
             raise ValueError("creation metadata is constructed only by the merge service")  # noqa: TRY003
+        if content.ordering is not None:
+            raise ValueError("ordering anchors are constructed only from supplied evidence IDs")  # noqa: TRY003
         return {"kind": content.kind, "text": content.text}
 
 
@@ -125,12 +154,24 @@ class AtomicMemoryReconciliationOutput(BaseModel):
         default=(),
         description="Selected related[].item_id values only, excluding proposal.item_id. Empty when related is empty.",
     )
-    content: AtomicMemoryReconciliationContent | None = None
+    content: AtomicMemoryReconciliationContent | None = Field(
+        default=None,
+        description="Full final kind/text for create, revise and merge, including unchanged proposals. Null only for noop.",
+    )
     evidence_ids: tuple[str, ...] = ()
+    statements: tuple[MemoryStatementSelection, ...] = Field(default=(), max_length=MAX_ORDERING_STATEMENTS)
+    statement_comparisons: tuple[MemoryStatementComparison, ...] = Field(default=(), max_length=128)
     reason: str = Field(
         min_length=1,
         description="One brief sentence explaining the action. Do not repeat the memory content.",
     )
+
+    @model_validator(mode="after")
+    def require_write_content(self) -> AtomicMemoryReconciliationOutput:
+        # Reject incomplete writes inside structured generation so its bounded retry can repair them.
+        if self.action != "noop" and self.content is None:
+            raise ValueError("create, revise and merge require full final content; null is allowed only for noop")  # noqa: TRY003
+        return self
 
 
 @dataclass(frozen=True)
@@ -153,6 +194,7 @@ class AtomicMemoryWorkingItem:
             text=self.content.text,
             original_refs=self.origins,
             evidence_ids=tuple(item.evidence_id for item in self.evidence),
+            ordering=self.content.ordering,
         )
 
 
@@ -164,6 +206,7 @@ class AtomicMemoryWindowWorkset:
         self.aliases: dict[str, str] = {}
         self.origins: dict[str, str] = {}
         self.reads: dict[str, AtomicMemoryRead] = {}
+        self.original_items: dict[str, AtomicMemoryWorkingItem] = {}
 
     def resolve(self, key: str) -> str:
         while key in self.aliases:
@@ -182,6 +225,7 @@ class AtomicMemoryWindowWorkset:
         self.items[item.key] = item
         for read in item.origins:
             self.origins[read.ref.artifact_id] = item.key
+            self.original_items.setdefault(read.ref.artifact_id, item)
         return item.key
 
     def related(self, proposal_key: str, keys: Iterable[str]) -> tuple[AtomicMemoryWorkingItem, ...]:
@@ -208,6 +252,19 @@ class AtomicMemoryWindowWorkset:
         validate_reconciliation_decision(request, output)
         key = self.resolve(proposal_key)
         proposal = self.items[key]
+        protected = protected_statement_target(request, output)
+        if protected is not None:
+            target = next(item for item in related if item.key == protected)
+            # Uncommitted work can be discarded; previously published identities cannot.
+            del self.items[key]
+            for read in proposal.origins:
+                original = self.original_items[read.ref.artifact_id]
+                self.items[original.key] = original
+                self.origins[read.ref.artifact_id] = original.key
+                self.aliases.pop(original.key, None)
+            if key not in self.items:
+                self.aliases[key] = target.key
+            return target.key
         supplied = {item.key: item for item in related}
         targets = tuple(supplied[identifier] for identifier in output.target_ids)
         if output.action == "noop":
@@ -223,6 +280,9 @@ class AtomicMemoryWindowWorkset:
         if output.content is None:
             _invalid("write content is missing")
         content = AtomicMemoryContent(kind=output.content.kind, text=output.content.text)
+        content = content.model_copy(
+            update={"ordering": selected_ordering(request, output, content, (proposal, *related))}
+        )
         inputs = (proposal, *targets)
         origins = tuple({read.ref.artifact_id: read for item in inputs for read in item.origins}.values())
         evidence_by_id = {item.evidence_id: item for item in request.evidence}
@@ -231,7 +291,7 @@ class AtomicMemoryWindowWorkset:
             {
                 (item.source_ref.source_type, item.source_ref.source_id): item.source_ref
                 for item in selected
-                if isinstance(item, AtomicMemoryEvidence) and item.via_artifact is None
+                if isinstance(item, AtomicMemoryEvidence) and (item.via_artifact is None or item.derived)
             }.values()
         )
         supporting_refs = (
@@ -312,6 +372,12 @@ def validate_reconciliation_decision(
         identities = {read.ref.artifact_id for item in (request.proposal, *targets) for read in item.original_refs}
         if len(identities) != 1:
             _invalid("revise must have exactly one published identity; use merge for multiple identities")
+    if output.action != "noop":
+        if output.statements and output.content is not None:
+            selected_ordering(
+                request, output, AtomicMemoryContent(kind=output.content.kind, text=output.content.text), ()
+            )
+        protected_statement_target(request, output)
 
 
 def _published(item: AtomicMemoryComparisonItem) -> set[tuple[str, str, int]]:
@@ -331,3 +397,153 @@ def unique_evidence(
 
 def _invalid(reason: str) -> NoReturn:
     raise InvalidInferenceOutputError("atomic-memory-reconcile", reason)
+
+
+def support_options(evidence):
+    """Resolve selectable IDs to immutable support; aggregate Artifact support stays unknown."""
+    options = {}
+    texts = {}
+    for item in evidence:
+        if isinstance(item, AtomicMemoryEvidence):
+            options[item.evidence_id] = (
+                StatementEvidence(
+                    source=item.source_ref,
+                    artifact=item.via_artifact,
+                    anchor=item.origin_anchor,
+                ),
+            )
+            texts[item.evidence_id] = str(item.content)
+        else:
+            options[item.evidence_id] = (StatementEvidence(artifact=item.artifact_ref),)
+            texts[item.evidence_id] = item.content.text
+            ordering = item.content.ordering or unknown_memory_ordering(item.content.kind, item.content.text)
+            for index, statement in enumerate(ordering.statements):
+                key = f"{item.evidence_id}/statement/{index}"
+                options[key] = tuple(
+                    support.model_copy(update={"via_artifact": item.artifact_ref}) for support in statement.evidence
+                )
+                texts[key] = statement.statement + (
+                    "" if statement.effective_date is None else "\n" + statement.effective_date.isoformat()
+                )
+    return options, texts
+
+
+def _selected_statement(selection, options, texts):
+    if not set(selection.evidence_ids) <= options.keys():
+        _invalid("statement selects unavailable support evidence")
+    if selection.effective_date is not None and not any(
+        selection.effective_date.isoformat() in texts[key] for key in selection.evidence_ids
+    ):
+        _invalid("statement effective date is absent from its selected evidence")
+    evidence = tuple(support for key in dict.fromkeys(selection.evidence_ids) for support in options[key])
+    return MemoryStatementSupport(
+        statement=selection.statement,
+        applicability=selection.applicability,
+        effective_date=selection.effective_date,
+        evidence=evidence,
+    )
+
+
+def statement_ordering(kind, text, selections, selected_ids, evidence):
+    selected = set(selected_ids)
+    for statement in selections:
+        if any(key.split("/statement/", 1)[0] not in selected for key in statement.evidence_ids):
+            _invalid("statement support must also be selected in direct output lineage")
+    options, texts = support_options(evidence)
+    ordering = MemoryOrderingSupport(
+        content_digest=memory_content_digest(kind, text),
+        statements=tuple(_selected_statement(selection, options, texts) for selection in selections),
+    )
+    try:
+        ordering.validate_content(kind, text)
+    except ValueError:
+        _invalid("statement support does not cover the exact retained content")
+    return ordering
+
+
+def candidate_ordering(candidate, evidence):
+    if candidate.statements:
+        return statement_ordering(
+            candidate.kind, candidate.text, candidate.statements, candidate.evidence_ids, evidence
+        )
+    selected = tuple(item for item in evidence if item.evidence_id in candidate.evidence_ids)
+    return MemoryOrderingSupport(
+        content_digest=memory_content_digest(candidate.kind, candidate.text),
+        statements=(
+            MemoryStatementSupport(
+                statement=candidate.text,
+                evidence=tuple(
+                    StatementEvidence(source=item.source_ref, artifact=item.via_artifact, anchor=item.origin_anchor)
+                    for item in selected
+                ),
+            ),
+        ),
+    )
+
+
+def selected_ordering(request, output, content, inputs):
+    if output.statements:
+        return statement_ordering(content.kind, content.text, output.statements, output.evidence_ids, request.evidence)
+    for item in inputs:
+        if (
+            item.content.kind == content.kind
+            and item.content.text == content.text
+            and item.content.ordering is not None
+        ):
+            return item.content.ordering
+    return unknown_memory_ordering(content.kind, content.text)
+
+
+def protected_statement_target(request, output):  # noqa: C901 - per-statement conflict decisions
+    """A delayed, unorderable conflict leaves existing statements and identities intact."""
+    if output.action == "noop" or not any(
+        isinstance(item, AtomicMemoryEvidence) and item.derived for item in request.evidence
+    ):
+        return None
+    by_id = {item.item_id: item for item in request.related}
+    required = {
+        (item.item_id, index)
+        for item in request.related
+        for index, _ in enumerate((item.ordering or unknown_memory_ordering(item.kind, item.text)).statements)
+    }
+    comparisons = {(item.item_id, item.statement_index): item for item in output.statement_comparisons}
+    if len(comparisons) != len(output.statement_comparisons) or set(comparisons) - required:
+        _invalid("statement comparisons must name exact supplied related statements once")
+    if required - comparisons.keys():
+        return next(iter(by_id))
+    proposal_ids = set(request.proposal.evidence_ids)
+    proposal_evidence = tuple(item for item in request.evidence if item.evidence_id in proposal_ids)
+    options, texts = support_options(proposal_evidence)
+    for (item_id, index), comparison in comparisons.items():
+        if comparison.incoming_statement not in request.proposal.text:
+            _invalid("comparison must identify an incoming proposal statement verbatim")
+        item = by_id[item_id]
+        existing = (item.ordering or unknown_memory_ordering(item.kind, item.text)).statements[index]
+        if comparison.relation == "independent":
+            if (
+                item_id in output.target_ids
+                and output.content is not None
+                and existing.statement not in output.content.text
+            ):
+                _invalid("independent retained statements cannot be dropped during a derived update")
+            continue
+        selection = MemoryStatementSelection(
+            statement=comparison.incoming_statement,
+            evidence_ids=comparison.incoming_evidence_ids,
+            effective_date=comparison.incoming_effective_date,
+        )
+        incoming = _selected_statement(selection, options, texts)
+        if not can_replace_statement(incoming, existing):
+            # A model may retain the current clause and publish independent material
+            # from the same input. Only the conflicting incoming clause is barred.
+            if (
+                output.content is not None
+                and output.statements
+                and comparison.incoming_statement not in output.content.text
+                and (item_id not in output.target_ids or existing.statement in output.content.text)
+            ):
+                continue
+            return item_id
+        if output.action == "create" or item_id not in output.target_ids:
+            _invalid("same-fact updates must consume their supplied identity rather than create a contradictory copy")
+    return None

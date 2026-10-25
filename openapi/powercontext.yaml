@@ -25,6 +25,213 @@ security:
   - BearerAuth: []
   - {}
 paths:
+  /v1/images/capture:
+    post:
+      operationId: capture_image
+      summary: Capture image bytes and a durable interpretation request
+      tags:
+      - media
+      x-powercontext-scope-mode: current
+      x-powercontext-access:
+        action: scope.contribute
+        resource:
+          type: scope
+          scope-id-from: scope_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureImageRequest'
+      responses:
+        '202':
+          description: Durable receipt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaCaptureReceipt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '413':
+          description: Image size or format rejected before acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '415':
+          description: Image size or format rejected before acceptance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/media/assets/get:
+    post:
+      operationId: get_media_asset
+      summary: Read exact retained media bytes
+      tags:
+      - media
+      x-powercontext-scope-mode: current
+      x-powercontext-access:
+        action: scope.read
+        resource:
+          type: scope
+          scope-id-from: scope_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetMediaAssetRequest'
+      responses:
+        '200':
+          description: Exact stored value; no model call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMediaAssetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/media/requests/get:
+    post:
+      operationId: get_media_request
+      summary: Read an exact media request
+      tags:
+      - media
+      x-powercontext-scope-mode: current
+      x-powercontext-access:
+        action: scope.read
+        resource:
+          type: scope
+          scope-id-from: scope_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetMediaRequestRequest'
+      responses:
+        '200':
+          description: Exact stored value; no model call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaProcessingRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/media/requests/list:
+    post:
+      operationId: list_media_requests
+      summary: List scoped media requests with bounded keyset pagination
+      tags:
+      - media
+      x-powercontext-scope-mode: current
+      x-powercontext-access:
+        action: scope.read
+        resource:
+          type: scope
+          scope-id-from: scope_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListMediaRequestsRequest'
+      responses:
+        '200':
+          description: Exact stored value; no model call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaRequestPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/images/analysis/request:
+    post:
+      operationId: request_image_analysis
+      summary: Retry a failed interpretation or explicitly reparse an original
+      tags:
+      - media
+      x-powercontext-scope-mode: current
+      x-powercontext-access:
+        action: scope.contribute
+        resource:
+          type: scope
+          scope-id-from: scope_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestImageAnalysisRequest'
+      responses:
+        '202':
+          description: Durable receipt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaProcessingRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/atomic-memory/list:
     post:
       tags:
@@ -3976,7 +4183,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [content]
+            enum: [content, image.original, image.interpretation, experimental.image.original, experimental.image.analysis]
         - name: source_id
           in: path
           required: true
@@ -5298,6 +5505,10 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+        ordering:
+          allOf:
+            - $ref: "#/components/schemas/MemoryOrderingSupport"
+          nullable: true
         text:
           type: string
           minLength: 1
@@ -6573,6 +6784,7 @@ components:
       - handoff
       - skill
       - prompt
+      - image_analysis
       - catalog_target
       - unresolved
     DreamEvidenceRole:
@@ -7049,12 +7261,28 @@ components:
         effect:
           type: string
           enum: [review_then_publish, review_then_publish_configuration, review_then_replace_tags]
+    ImageProcessingCapability:
+      type: object
+      additionalProperties: false
+      required: [enabled, available, processing_enabled, vision_configured, profile_digest, error_code]
+      properties:
+        enabled: {type: boolean}
+        available: {type: boolean}
+        processing_enabled: {type: boolean}
+        vision_configured: {type: boolean}
+        profile_digest: {type: string, nullable: true}
+        error_code: {type: string, nullable: true}
     Capabilities:
       type: object
       additionalProperties: false
       required:
         [source_types, artifact_families, memory_extraction, handoff_generation, search_modes, context_versions]
       properties:
+        media:
+          allOf:
+            - $ref: "#/components/schemas/ImageProcessingCapability"
+          nullable: true
+          description: Image binding configuration and storage admission readiness; this does not call Vision.
         prompts:
           type: object
           default: {}
@@ -11926,7 +12154,7 @@ components:
           pattern: '.*\S.*'
         source_type:
           type: string
-          enum: [content]
+          enum: [content, image.original, image.interpretation, experimental.image.original, experimental.image.analysis]
         source_id:
           type: string
           minLength: 1
@@ -11983,7 +12211,7 @@ components:
       enum: [memory, atomic-memory, experience, skill, handoff, profile, prompt, topic-memory]
     ArtifactReadFamily:
       type: string
-      enum: [memory, atomic-memory, experience, skill, handoff, profile, prompt, topic-memory]
+      enum: [memory, atomic-memory, experience, skill, handoff, profile, prompt, topic-memory, image-analysis]
     StatsPeriod:
       type: string
       enum: [today, 7d, 30d]
@@ -12686,3 +12914,824 @@ components:
           items:
             $ref: '#/components/schemas/Candidate'
           default: []
+    ExperimentalImageMediaType:
+      type: string
+      enum: [image/png, image/jpeg]
+    ExperimentalImageDigest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    ExperimentalImageScopedSource:
+      type: object
+      additionalProperties: false
+      required: [scope_id, source]
+      properties:
+        scope_id: {type: string, minLength: 1, maxLength: 256, pattern: '.*\S.*'}
+        source:
+          $ref: "#/components/schemas/SourceTypeReference"
+    ExperimentalImageAsset:
+      type: object
+      additionalProperties: false
+      required: [asset_id, digest, media_type, byte_length, width, height]
+      properties:
+        asset_id: {type: string, pattern: '^ia_[0-9a-f]{64}$'}
+        digest:
+          $ref: "#/components/schemas/ExperimentalImageDigest"
+        media_type:
+          $ref: "#/components/schemas/ExperimentalImageMediaType"
+        byte_length: {type: integer, minimum: 1, maximum: 8388608}
+        width: {type: integer, minimum: 1, maximum: 16384}
+        height: {type: integer, minimum: 1, maximum: 16384}
+    ExperimentalImageOrigin:
+      type: object
+      additionalProperties: false
+      required: [kind, attachment_index]
+      properties:
+        kind: {type: string, enum: [explicit_upload, codex]}
+        attachment_index: {type: integer, minimum: 0, maximum: 3}
+        host_instance_id: {type: string, minLength: 1, maxLength: 128, nullable: true}
+        session_id: {type: string, minLength: 1, maxLength: 128, nullable: true}
+        turn_id: {type: string, minLength: 1, maxLength: 128, nullable: true}
+        message_id: {type: string, minLength: 1, maxLength: 128, nullable: true}
+        representation: {type: string, enum: [original_file, host_image], nullable: true}
+        client_variant: {type: string, enum: [cli_exec, cli_tui, desktop], nullable: true}
+    ExperimentalImageContext:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, maxLength: 2048}
+        source:
+          allOf:
+            - $ref: "#/components/schemas/ExperimentalImageScopedSource"
+          nullable: true
+    ExperimentalImageParseProfile:
+      type: object
+      additionalProperties: false
+      required: [model_id, deployment_id, base_url, prompt_version, preprocessing_version, output_mode, timeout_seconds, max_attempts, max_output_tokens]
+      properties:
+        model_id: {type: string, minLength: 1, maxLength: 128}
+        deployment_id: {type: string, minLength: 1, maxLength: 128}
+        base_url: {type: string, format: uri, minLength: 1, maxLength: 2048}
+        prompt_version: {type: string, enum: [image-evidence-v1]}
+        preprocessing_version: {type: string, enum: [exif-strip-v1]}
+        output_mode: {type: string, enum: [prompted_json]}
+        timeout_seconds: {type: integer, minimum: 1, maximum: 300}
+        max_attempts: {type: integer, minimum: 1, maximum: 5}
+        max_output_tokens: {type: integer, minimum: 1, maximum: 8192}
+    ExperimentalImageEntity:
+      type: object
+      additionalProperties: false
+      required: [entity_id, label]
+      properties:
+        entity_id: {type: string, minLength: 1, maxLength: 64}
+        label: {type: string, minLength: 1, maxLength: 512}
+    ExperimentalImageRelation:
+      type: object
+      additionalProperties: false
+      required: [from_id, to_id, label]
+      properties:
+        from_id: {type: string, minLength: 1, maxLength: 64}
+        to_id: {type: string, minLength: 1, maxLength: 64}
+        label: {type: string, minLength: 1, maxLength: 512}
+    ExperimentalImageParseOutput:
+      type: object
+      additionalProperties: false
+      required: [readability, ocr_text, visual_description, entities, relations, uncertainties]
+      properties:
+        readability: {type: string, enum: [readable, partial, unreadable]}
+        ocr_text: {type: string, maxLength: 16384}
+        visual_description: {type: string, maxLength: 4096}
+        entities:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ExperimentalImageEntity"
+        relations:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ExperimentalImageRelation"
+        uncertainties:
+          type: array
+          maxItems: 16
+          items: {type: string, minLength: 1, maxLength: 512}
+    ExperimentalImageOriginalPayload:
+      type: object
+      additionalProperties: false
+      required: [name, definition_version, materialization, asset, capture_key, origin, context]
+      properties:
+        name: {type: string, pattern: '^img_[0-9a-f]{64}$'}
+        definition_version: {type: string, enum: ['1']}
+        materialization: {type: string, enum: [captured]}
+        description: {type: string, maxLength: 2048, nullable: true}
+        asset:
+          $ref: "#/components/schemas/ExperimentalImageAsset"
+        capture_key: {type: string, minLength: 1, maxLength: 256, pattern: '.*\S.*'}
+        origin:
+          $ref: "#/components/schemas/ExperimentalImageOrigin"
+        context:
+          $ref: "#/components/schemas/ExperimentalImageContext"
+    ExperimentalImageAnalysisPayload:
+      type: object
+      additionalProperties: false
+      required: [name, definition_version, materialization, original, task_id, profile_digest, profile, input_digest, context_digest, output]
+      properties:
+        name: {type: string, pattern: '^imga_[0-9a-f]{64}$'}
+        definition_version: {type: string, enum: ['1']}
+        materialization: {type: string, enum: [captured]}
+        description: {type: string, maxLength: 2048, nullable: true}
+        original:
+          $ref: "#/components/schemas/ExperimentalImageScopedSource"
+        task_id: {type: string, pattern: '^it_[0-9a-f]{64}$'}
+        profile_digest:
+          $ref: "#/components/schemas/ExperimentalImageDigest"
+        profile:
+          $ref: "#/components/schemas/ExperimentalImageParseProfile"
+        input_digest:
+          $ref: "#/components/schemas/ExperimentalImageDigest"
+        context_digest:
+          $ref: "#/components/schemas/ExperimentalImageDigest"
+        output:
+          $ref: "#/components/schemas/ExperimentalImageParseOutput"
+    ClientVariant:
+      enum:
+      - cli_exec
+      - cli_tui
+      - desktop
+      type: string
+    Kind10:
+      enum:
+      - explicit_upload
+      - codex
+      type: string
+    Representation:
+      enum:
+      - original_file
+      - host_image
+      type: string
+    CaptureImageRequest:
+      additionalProperties: false
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: '.*\S.*'
+        capture_key:
+          pattern: ".*\\S.*"
+          maxLength: 256
+          minLength: 1
+          type: string
+        processing_kind:
+          default: image.interpretation
+          type: string
+          enum:
+          - image.interpretation
+        media_type:
+          enum:
+          - image/png
+          - image/jpeg
+          type: string
+        bytes_base64:
+          pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          maxLength: 11184812
+          minLength: 4
+          type: string
+        origin:
+          $ref: '#/components/schemas/ExperimentalImageOrigin'
+        context:
+          $ref: '#/components/schemas/ExperimentalImageContext'
+      required:
+      - scope_id
+      - capture_key
+      - media_type
+      - bytes_base64
+      - origin
+      - context
+      type: object
+    RequestImageAnalysisRequest:
+      additionalProperties: false
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: '.*\S.*'
+        operation:
+          enum:
+          - retry
+          - reparse
+          type: string
+        idempotency_key:
+          maxLength: 256
+          minLength: 1
+          type: string
+        original:
+          $ref: '#/components/schemas/SourceTypeReference'
+        request_id:
+          pattern: ^mr_[0-9a-f]{64}$
+          type: string
+          nullable: true
+        expected_state_version:
+          minimum: 1
+          type: integer
+          nullable: true
+        expected_artifact_revision:
+          minimum: 0
+          type: integer
+        expected_profile_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        processing_kind:
+          default: image.interpretation
+          type: string
+          enum:
+          - image.interpretation
+      required:
+      - scope_id
+      - operation
+      - idempotency_key
+      - original
+      - expected_artifact_revision
+      - expected_profile_digest
+      type: object
+    ImageTechnicalMetadata:
+      additionalProperties: false
+      properties:
+        schema:
+          default: powercontext.media.image.v1
+          type: string
+          enum:
+          - powercontext.media.image.v1
+        width:
+          minimum: 1
+          type: integer
+        height:
+          minimum: 1
+          type: integer
+      required:
+      - width
+      - height
+      type: object
+    MediaAsset:
+      additionalProperties: false
+      properties:
+        asset_id:
+          pattern: ^ma_[0-9a-f]{64}$
+          type: string
+        digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        media_type:
+          enum:
+          - image/png
+          - image/jpeg
+          type: string
+        byte_size:
+          minimum: 1
+          maximum: 8388608
+          type: integer
+        metadata:
+          $ref: '#/components/schemas/ImageTechnicalMetadata'
+      required:
+      - asset_id
+      - digest
+      - media_type
+      - byte_size
+      - metadata
+      type: object
+    ScopedMediaSource:
+      additionalProperties: false
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: '.*\S.*'
+        source:
+          $ref: '#/components/schemas/SourceTypeReference'
+      required:
+      - scope_id
+      - source
+      type: object
+    MediaCaptureReceipt:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [accepted]
+          default: accepted
+        original:
+          $ref: '#/components/schemas/ScopedMediaSource'
+        asset:
+          $ref: '#/components/schemas/MediaAsset'
+        sequence:
+          minimum: 1
+          type: integer
+        request_id:
+          pattern: ^mr_[0-9a-f]{64}$
+          type: string
+        replayed:
+          default: false
+          type: boolean
+      required:
+      - original
+      - asset
+      - sequence
+      - request_id
+      type: object
+    MediaAttempt:
+      additionalProperties: false
+      properties:
+        attempt:
+          maximum: 5
+          minimum: 1
+          type: integer
+        state:
+          enum:
+          - started
+          - succeeded
+          - failed
+          - interrupted
+          type: string
+        started_at:
+          format: date-time
+          type: string
+        finished_at:
+          format: date-time
+          type: string
+          nullable: true
+        provider_requests:
+          default: 0
+          maximum: 1
+          minimum: 0
+          type: integer
+          nullable: true
+        input_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+          nullable: true
+        input_tokens:
+          minimum: 0
+          type: integer
+          nullable: true
+        output_tokens:
+          minimum: 0
+          type: integer
+          nullable: true
+        latency_ms:
+          minimum: 0
+          type: number
+          nullable: true
+        http_status:
+          maximum: 599
+          minimum: 100
+          type: integer
+          nullable: true
+        error_code:
+          maxLength: 128
+          type: string
+          nullable: true
+      required:
+      - attempt
+      - state
+      - started_at
+      type: object
+    MediaProcessingRequest:
+      additionalProperties: false
+      description: Public progress never embeds image bytes, prompts, or provider responses.
+      properties:
+        schema:
+          default: powercontext.media.request.v1
+          type: string
+          enum:
+          - powercontext.media.request.v1
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: '.*\S.*'
+        request_id:
+          pattern: ^mr_[0-9a-f]{64}$
+          type: string
+        processing_kind:
+          default: image.interpretation
+          type: string
+          enum:
+          - image.interpretation
+        operation:
+          enum:
+          - capture
+          - retry
+          - reparse
+          type: string
+        original:
+          $ref: '#/components/schemas/ScopedMediaSource'
+        state:
+          $ref: '#/components/schemas/MediaRequestState'
+        state_version:
+          minimum: 1
+          type: integer
+        profile_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        attempt_count:
+          maximum: 5
+          minimum: 0
+          type: integer
+        max_attempts:
+          maximum: 5
+          minimum: 1
+          type: integer
+        attempts:
+          default: []
+          items:
+            $ref: '#/components/schemas/MediaAttempt'
+          maxItems: 5
+          type: array
+        result:
+          allOf:
+          - $ref: '#/components/schemas/ScopedMediaArtifact'
+          nullable: true
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/ScopedMediaSource'
+          nullable: true
+        error_code:
+          maxLength: 128
+          type: string
+          nullable: true
+        next_attempt_at:
+          format: date-time
+          type: string
+          nullable: true
+        created_at:
+          format: date-time
+          type: string
+      required:
+      - scope_id
+      - request_id
+      - operation
+      - original
+      - state
+      - state_version
+      - profile_digest
+      - attempt_count
+      - max_attempts
+      - created_at
+      type: object
+    MediaRequestState:
+      enum:
+      - pending
+      - running
+      - retry_wait
+      - blocked
+      - succeeded
+      - failed
+      - superseded
+      type: string
+    ScopedMediaArtifact:
+      additionalProperties: false
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: '.*\S.*'
+        artifact:
+          $ref: '#/components/schemas/ArtifactReference'
+      required:
+      - scope_id
+      - artifact
+      type: object
+    MediaRequestPage:
+      additionalProperties: false
+      properties:
+        items:
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/MediaProcessingRequest'
+          type: array
+        next_cursor:
+          type: string
+          nullable: true
+      required:
+      - items
+      type: object
+    EvidenceAnchor:
+      additionalProperties: false
+      description: Repository-validated original position, never a model-supplied timestamp.
+      properties:
+        scope_id:
+          maxLength: 256
+          minLength: 1
+          type: string
+        source:
+          $ref: '#/components/schemas/SourceTypeReference'
+        journal_position:
+          minimum: 1
+          type: integer
+        recorded_at:
+          format: date-time
+          type: string
+          nullable: true
+      required:
+      - scope_id
+      - source
+      - journal_position
+      type: object
+    OutputMode:
+      enum:
+      - prompted_json
+      type: string
+    PreprocessingVersion:
+      enum:
+      - exif-strip-v1
+      type: string
+    PromptVersion:
+      enum:
+      - image-evidence-v1
+      type: string
+    Readability:
+      enum:
+      - readable
+      - partial
+      - unreadable
+      type: string
+    Uncertainty:
+      maxLength: 512
+      minLength: 1
+      type: string
+    ImageAnalysisContent:
+      additionalProperties: false
+      properties:
+        schema:
+          default: powercontext.image-analysis.v1
+          type: string
+          enum:
+          - powercontext.image-analysis.v1
+        original:
+          $ref: '#/components/schemas/ScopedMediaSource'
+        origin_anchor:
+          $ref: '#/components/schemas/EvidenceAnchor'
+        profile:
+          $ref: '#/components/schemas/ExperimentalImageParseProfile'
+        profile_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        input_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        context_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        context:
+          $ref: '#/components/schemas/ExperimentalImageContext'
+        output:
+          $ref: '#/components/schemas/ExperimentalImageParseOutput'
+        provider_revision:
+          maxLength: 256
+          type: string
+          nullable: true
+      required:
+      - original
+      - origin_anchor
+      - profile
+      - profile_digest
+      - input_digest
+      - context_digest
+      - context
+      - output
+      type: object
+    MemoryStatementSupport:
+      additionalProperties: false
+      description: Exact retained text and applicability, associated with its own evidence.
+      properties:
+        statement:
+          maxLength: 8192
+          minLength: 1
+          type: string
+        applicability:
+          maxLength: 1024
+          type: string
+          nullable: true
+        effective_date:
+          format: date
+          type: string
+          nullable: true
+        evidence:
+          default: []
+          items:
+            $ref: '#/components/schemas/StatementEvidence'
+          maxItems: 16
+          type: array
+      required:
+      - statement
+      type: object
+    StatementEvidence:
+      additionalProperties: false
+      description: An exact supporting input, with either a verified origin or unknown basis.
+      properties:
+        source:
+          allOf:
+          - $ref: '#/components/schemas/SourceTypeReference'
+          nullable: true
+        artifact:
+          allOf:
+          - $ref: '#/components/schemas/ArtifactReference'
+          nullable: true
+        via_artifact:
+          allOf:
+          - $ref: '#/components/schemas/ArtifactReference'
+          nullable: true
+        anchor:
+          allOf:
+          - $ref: '#/components/schemas/EvidenceAnchor'
+          nullable: true
+      type: object
+    MemoryOrderingSupport:
+      additionalProperties: false
+      properties:
+        schema:
+          default: powercontext.memory-ordering.v1
+          type: string
+          enum:
+          - powercontext.memory-ordering.v1
+        content_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+        statements:
+          items:
+            $ref: '#/components/schemas/MemoryStatementSupport'
+          maxItems: 32
+          minItems: 1
+          type: array
+      required:
+      - content_digest
+      - statements
+      type: object
+    SourceMaterialization:
+      description: Describe where the value read for a Source comes from.
+      enum:
+      - captured
+      - referenced
+      type: string
+    ImageOriginalPayload:
+      additionalProperties: false
+      description: One submitted occurrence; its bytes are retained by shared media storage.
+      properties:
+        name:
+          type: string
+        definition_version:
+          default: '1'
+          type: string
+        materialization:
+          $ref: '#/components/schemas/SourceMaterialization'
+        description:
+          type: string
+          nullable: true
+        asset:
+          $ref: '#/components/schemas/MediaAsset'
+        capture_key:
+          maxLength: 256
+          minLength: 1
+          type: string
+        origin:
+          $ref: '#/components/schemas/ExperimentalImageOrigin'
+        context:
+          $ref: '#/components/schemas/ExperimentalImageContext'
+      required:
+      - name
+      - materialization
+      - asset
+      - capture_key
+      - origin
+      - context
+      type: object
+    ImageInterpretationPayload:
+      additionalProperties: false
+      description: A deterministic snapshot of one authoritative image-analysis revision.
+      properties:
+        name:
+          type: string
+        definition_version:
+          default: '1'
+          type: string
+        materialization:
+          $ref: '#/components/schemas/SourceMaterialization'
+        description:
+          type: string
+          nullable: true
+        result:
+          $ref: '#/components/schemas/ScopedMediaArtifact'
+        original:
+          $ref: '#/components/schemas/ScopedMediaSource'
+        origin_anchor:
+          $ref: '#/components/schemas/EvidenceAnchor'
+        projection_version:
+          default: '1'
+          type: string
+        readability:
+          pattern: ^(readable|partial|unreadable)$
+          type: string
+        content:
+          maxLength: 131072
+          minLength: 1
+          type: string
+        content_digest:
+          pattern: ^sha256:[0-9a-f]{64}$
+          type: string
+      required:
+      - name
+      - materialization
+      - result
+      - original
+      - origin_anchor
+      - readability
+      - content
+      - content_digest
+      type: object
+    GetMediaAssetRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - scope_id
+      - asset_id
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: .*\S.*
+        asset_id:
+          type: string
+          pattern: ^ma_[0-9a-f]{64}$
+    GetMediaAssetResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - asset
+      - bytes_base64
+      properties:
+        asset:
+          $ref: '#/components/schemas/MediaAsset'
+        bytes_base64:
+          type: string
+          maxLength: 11184812
+    GetMediaRequestRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - scope_id
+      - request_id
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: .*\S.*
+        request_id:
+          type: string
+          pattern: ^mr_[0-9a-f]{64}$
+    ListMediaRequestsRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - scope_id
+      properties:
+        scope_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: .*\S.*
+        processing_kind:
+          type: string
+          enum:
+          - image.interpretation
+          default: image.interpretation
+        states:
+          type: array
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/MediaRequestState'
+          default: []
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+        cursor:
+          type: string
+          maxLength: 2048
+          nullable: true
+x-powercontext-media:
+  implemented_operations: [capture_image, get_media_asset, get_media_request, list_media_requests, request_image_analysis]
+  source_definitions:
+    image.original: {version: "1", payload_schema: "#/components/schemas/ImageOriginalPayload", projections: []}
+    image.interpretation: {version: "1", payload_schema: "#/components/schemas/ImageInterpretationPayload", projections: [{name: powercontext.text-evidence, version: "1"}]}
+  contract_version: "1"
+  active: true
+  rfc: https://github.com/oceanbase/powercontext/pull/1972
+  processing_kinds: [image.interpretation]
+  storage: sqlite-blob
+  legacy_import: reject-before-writes

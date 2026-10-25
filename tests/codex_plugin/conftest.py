@@ -72,3 +72,8 @@ def bind_tools_module() -> ModuleType:
 @pytest.fixture
 def session_binding_module() -> ModuleType:
     return _load_module("powercontext_codex_session_binding", PLUGIN_ROOT / "hooks" / "session_binding.py")
+
+
+@pytest.fixture
+def image_capture_module() -> ModuleType:
+    return _load_module("powercontext_codex_image_capture", PLUGIN_ROOT / "hooks" / "image_capture.py")

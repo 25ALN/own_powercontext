@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import pytest
@@ -160,3 +161,52 @@ def test_reconciliation_output_json_schema_omits_service_owned_metadata(mode) ->
     (content_schema,) = tuple(item for item in schema["properties"]["content"]["anyOf"] if "$ref" in item)
     content = schema["$defs"][content_schema["$ref"].rsplit("/", 1)[-1]]
     assert set(content["properties"]) == {"kind", "text"}
+
+
+def test_reconciliation_repairs_a_model_write_without_final_content() -> None:
+    responses = iter([
+        {
+            "action": "create",
+            "compared_ids": [],
+            "content": None,
+            "evidence_ids": ["source:1"],
+            "reason": "Independent.",
+        },
+        {
+            "action": "create",
+            "compared_ids": [],
+            "content": {"kind": "fact", "text": "PNG is supported."},
+            "evidence_ids": ["source:1"],
+            "reason": "Independent.",
+        },
+    ])
+
+    async def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(parts=[TextPart(json.dumps(next(responses)))])
+
+    async def scenario() -> None:
+        generator = PydanticAIStructuredGenerator(
+            model=FunctionModel(respond),
+            instructions="Reconcile the supplied evidence.",
+            input_type=AtomicMemoryReconciliationInput,
+            output_type=AtomicMemoryReconciliationOutput,
+            limits=InferenceLimits(max_requests=2),
+        )
+        result = await generator.generate(
+            AtomicMemoryReconciliationInput(
+                proposal=AtomicMemoryComparisonItem(
+                    item_id="candidate:1",
+                    kind="fact",
+                    text="PNG is supported.",
+                    original_refs=(),
+                    evidence_ids=("source:1",),
+                ),
+                related=(),
+                evidence=(),
+            )
+        )
+        assert result.output.content is not None
+        assert result.output.content.text == "PNG is supported."
+        assert result.usage is not None and result.usage.requests == 2
+
+    asyncio.run(scenario())

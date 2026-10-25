@@ -35,6 +35,9 @@ BLOCKS = "pc_topic_memory_work_blocks"
 LEASES = "pc_artifact_processing_leases"
 OBJECTS = (BUDGET, ATTEMPTS, BLOCKS)
 _BOOTSTRAP_COMPANIONS = frozenset({
+    "pc_media_assets",
+    "pc_media_processing_requests",
+    "pc_media_capacity",
     "pc_access_relationship_heads",
     "pc_access_relationships",
     "pc_access_owners",

@@ -745,6 +745,7 @@ def _is_complete_hook(integration_id: str, event: str, scripts: set[Path]) -> bo
         ("codex", "PreToolUse"): "bind_tools.py",
         ("codex", "Stop"): "token_savings.py",
         ("claude-code", "SessionStart"): "session_start.py",
+        ("codex", "Interrupt"): "image_capture.py",
     }.get((integration_id, event))
     return expected_script is not None and any(
         script.is_file() and script.name == expected_script for script in scripts

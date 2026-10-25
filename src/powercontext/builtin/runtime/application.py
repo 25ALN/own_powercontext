@@ -148,6 +148,7 @@ from powercontext.builtin.evidence.resolver import (
     ScopedEvidenceAuthorizer,
     ScopedEvidenceBatchAuthorizer,
 )
+from powercontext.builtin.images.application import ImageApplication as ImageService
 from powercontext.builtin.inference import (
     EmbeddingModel,
 )
@@ -3827,6 +3828,7 @@ class BuiltinRuntime:
         handoff_committer: Callable[..., Awaitable[Handoff]] | None = None,
         extraction_diagnostics: ExtractionDiagnostics | None = None,
         code_service: CodeService | None = None,
+        image_service: ImageService | None = None,
         source_window_limit: int = 100,
         context_assembly_max_entries: int = 8,
         recall_sufficiency_policy: RecallSufficiencyPolicy | None = None,
@@ -3899,6 +3901,7 @@ class BuiltinRuntime:
         self._primary_database = primary_database
         self._owner_write_transactions = owner_write_transactions
         self._handoff_committer = handoff_committer
+        self.images = image_service
         self._capabilities = capabilities
         self._extraction_diagnostics = extraction_diagnostics
         self._review_service = review_service

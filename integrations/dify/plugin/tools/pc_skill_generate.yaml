@@ -686,6 +686,175 @@ output_schema:
                       type: string
                       minLength: 1
                       maxLength: 128
+                    ordering:
+                      anyOf:
+                      - allOf:
+                        - additionalProperties: false
+                          properties:
+                            schema:
+                              default: powercontext.memory-ordering.v1
+                              type: string
+                              enum:
+                              - powercontext.memory-ordering.v1
+                            content_digest:
+                              pattern: ^sha256:[0-9a-f]{64}$
+                              type: string
+                            statements:
+                              items:
+                                additionalProperties: false
+                                description: Exact retained text and applicability,
+                                  associated with its own evidence.
+                                properties:
+                                  statement:
+                                    maxLength: 8192
+                                    minLength: 1
+                                    type: string
+                                  applicability:
+                                    anyOf:
+                                    - maxLength: 1024
+                                      type: string
+                                    - type: 'null'
+                                  effective_date:
+                                    anyOf:
+                                    - format: date
+                                      type: string
+                                    - type: 'null'
+                                  evidence:
+                                    default: []
+                                    items:
+                                      additionalProperties: false
+                                      description: An exact supporting input, with
+                                        either a verified origin or unknown basis.
+                                      properties:
+                                        source:
+                                          anyOf:
+                                          - allOf:
+                                            - type: object
+                                              additionalProperties: false
+                                              required:
+                                              - source_type
+                                              - source_id
+                                              properties:
+                                                source_type:
+                                                  type: string
+                                                  description: Stable Source type,
+                                                    including dynamically registered
+                                                    Source names.
+                                                source_id:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 256
+                                                  description: Source identity as
+                                                    accepted at ingestion, including
+                                                    Unicode and interior spaces.
+                                          - type: 'null'
+                                        artifact:
+                                          anyOf:
+                                          - allOf:
+                                            - type: object
+                                              additionalProperties: false
+                                              required:
+                                              - family
+                                              - artifact_id
+                                              - revision
+                                              properties:
+                                                family:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 128
+                                                  pattern: ^[\x21-\x7E]+$
+                                                artifact_id:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 128
+                                                  pattern: ^[\x21-\x7E]+$
+                                                revision:
+                                                  type: integer
+                                                  minimum: 1
+                                          - type: 'null'
+                                        via_artifact:
+                                          anyOf:
+                                          - allOf:
+                                            - type: object
+                                              additionalProperties: false
+                                              required:
+                                              - family
+                                              - artifact_id
+                                              - revision
+                                              properties:
+                                                family:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 128
+                                                  pattern: ^[\x21-\x7E]+$
+                                                artifact_id:
+                                                  type: string
+                                                  minLength: 1
+                                                  maxLength: 128
+                                                  pattern: ^[\x21-\x7E]+$
+                                                revision:
+                                                  type: integer
+                                                  minimum: 1
+                                          - type: 'null'
+                                        anchor:
+                                          anyOf:
+                                          - allOf:
+                                            - additionalProperties: false
+                                              description: Repository-validated original
+                                                position, never a model-supplied timestamp.
+                                              properties:
+                                                scope_id:
+                                                  maxLength: 256
+                                                  minLength: 1
+                                                  type: string
+                                                source:
+                                                  type: object
+                                                  additionalProperties: false
+                                                  required:
+                                                  - source_type
+                                                  - source_id
+                                                  properties:
+                                                    source_type:
+                                                      type: string
+                                                      description: Stable Source type,
+                                                        including dynamically registered
+                                                        Source names.
+                                                    source_id:
+                                                      type: string
+                                                      minLength: 1
+                                                      maxLength: 256
+                                                      description: Source identity
+                                                        as accepted at ingestion,
+                                                        including Unicode and interior
+                                                        spaces.
+                                                journal_position:
+                                                  minimum: 1
+                                                  type: integer
+                                                recorded_at:
+                                                  anyOf:
+                                                  - format: date-time
+                                                    type: string
+                                                  - type: 'null'
+                                              required:
+                                              - scope_id
+                                              - source
+                                              - journal_position
+                                              type: object
+                                          - type: 'null'
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                required:
+                                - statement
+                                type: object
+                              maxItems: 32
+                              minItems: 1
+                              type: array
+                          required:
+                          - content_digest
+                          - statements
+                          type: object
+                      - type: 'null'
                     text:
                       type: string
                       minLength: 1

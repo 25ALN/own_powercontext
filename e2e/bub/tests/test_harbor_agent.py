@@ -74,8 +74,12 @@ def test_acp_server_install_names_the_pre_release_sdk_and_keeps_the_harness_bub(
 
 def test_codex_plugin_accepts_the_server_url_the_harness_writes(monkeypatch, tmp_path: Path) -> None:
     # The plugin validates its .mcp.json strictly, so load the rewritten copy with the plugin's own settings.
-    for name in ("settings.py", "powercontext_client_config.py", ".mcp.json"):
-        shutil.copy2(_CODEX_PLUGIN / name, tmp_path / name)
+    shutil.copytree(
+        _CODEX_PLUGIN,
+        tmp_path,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(".venv", "__pycache__", "*.pyc"),
+    )
     server_url = "http://host-gateway:8000"
     subprocess.run(  # noqa: S603 - fixed interpreter and arguments
         [sys.executable, "-c", MCP_URL_REWRITE, str(tmp_path / ".mcp.json"), plugin_mcp_url(server_url)],
@@ -94,3 +98,4 @@ def test_codex_plugin_accepts_the_server_url_the_harness_writes(monkeypatch, tmp
     plugin_settings = importlib.import_module("settings")
 
     assert plugin_settings.CodexPluginSettings().server_url == server_url
+    assert plugin_settings.CodexPluginSettings().capture_images is False

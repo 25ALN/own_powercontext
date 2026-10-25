@@ -375,6 +375,16 @@ the Server is unavailable or rejects authentication. Without an explicit Scope, 
 binding, workspace binding, then Server default. Process-level settings must be present in the environment that starts
 Codex. Windows setup writes authorization to the user environment, but Desktop must be restarted to inherit it.
 
+## Optional image materials
+
+Images are off by default and available in the ordinary configuration wizard. The experiment supports file SQLite and PNG/JPEG. Background Vision publishes an image-analysis Artifact revision and a deterministic image.interpretation Source; existing Memory and Topic processing decides what to extract. Install the optional `images` extra for decoding. Original bytes are SQLite BLOBs; existing databases need the explicit media migration, and legacy seven-table/file imports are rejected before writes. Configure a separate Vision connection or explicitly reuse an image-capable OpenAI Chat generation connection. The Codex chat subscription is a separate connection.
+
+Start Server normally, then run `powercontext setup codex`. Setup records consent for this workspace and manages the client collector automatically. No separate collector command is needed. Check Scope, collector and Server status with `powercontext doctor codex`. Trust new or changed hooks in Codex when requested.
+
+The Dashboard Image materials page shows originals and parsing status before Memory exists. Generated Memory links to its exact historical material. Disabling images keeps retained materials readable. Run `powercontext setup codex --no-capture-images` to revoke capture consent. Setting `POWERCONTEXT_CODEX_CAPTURE_IMAGES=true` authorizes capture during setup; an absent or false value preserves saved consent, including when setup runs again.
+
+Automatic capture accepts verified record formats only: CLI exec 0.141.0, 0.162.0-alpha.2 and 0.162.0-alpha.17.2; Desktop engines 0.162.0-alpha.2 and 0.162.0-alpha.17.2. Unknown versions fail closed with diagnostics; interactive CLI TUI is not enabled. Native lifecycle execution is verified on Windows; other platforms need separate acceptance.
+
 ## Automatic input privacy
 
 See [Automatic prompt privacy](index.md#automatic-prompt-privacy) for this host's capture default, disable control, credential recognition limits and independent read-only query handling. Recognized inputs are skipped for capture; accepted Source content and event identity are not rewritten.

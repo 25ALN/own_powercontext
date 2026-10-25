@@ -36,12 +36,25 @@ def runtime_faults(run: AcceptanceRun) -> None:
         run.observer.capture_response_gate = gate
         try:
             result = run.invoke(prompt_text)
+            accepted = gate.accepted.wait(max(0, min(5, run.budget - time.monotonic())))
+            # CLI completion can precede the Hook's final observation write.
+            # Keep the accepted response held until capture has timed out; an
+            # early release would turn this fault into a successful capture.
+            deadline = min(run.budget, time.monotonic() + 10)
+            while True:
+                prompt = next(
+                    (item for item in run.observations(result["sessionId"]) if item["event"] == "UserPromptSubmit"),
+                    None,
+                )
+                if prompt and prompt["stages"]["capture"]["state"] not in {"not_observed", "running"}:
+                    break
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
         finally:
             gate.release()
             run.observer.capture_response_gate = None
-        accepted = gate.accepted.wait(max(0, min(5, run.budget - time.monotonic())))
-        records = run.observations(result["sessionId"])
-        prompt = next(item for item in records if item["event"] == "UserPromptSubmit")
+        assert prompt is not None, "late_capture_observation_missing"
         evidence.append(
             run.evidence(
                 "late-capture-attempt",
@@ -130,7 +143,7 @@ def runtime_faults(run: AcceptanceRun) -> None:
             run.evidence(
                 "runtime-faults",
                 {
-                    "late_response_injection": "accepted_receipt_held_until_host_turn_completed",
+                    "late_response_injection": "accepted_receipt_held_until_capture_terminal_observed",
                     "capture_state": "unknown",
                     "accepted_source_readback": {"name": "content", "source_id": captures[0]["source_id"]},
                     "status_read_only": True,

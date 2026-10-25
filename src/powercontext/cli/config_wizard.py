@@ -111,7 +111,9 @@ class Wizard:
         self.ui.say(en, zh)
 
 
-def run_wizard(output: Path, *, language: str | None = None, advanced: bool = False) -> None:
+def run_wizard(
+    output: Path, *, language: str | None = None, advanced: bool = False, experimental_images: bool = False
+) -> None:
     """Collect answers and write files only after explicit final confirmation."""
 
     from powercontext.cli.config import ConfigError
@@ -134,6 +136,7 @@ def run_wizard(output: Path, *, language: str | None = None, advanced: bool = Fa
         _storage(state)
         if state.client_only:
             _agents(state)
+            _client_image_consent(state)
         else:
             mode = "configure"
             if content:
@@ -162,6 +165,8 @@ def run_wizard(output: Path, *, language: str | None = None, advanced: bool = Fa
                 _agents(state)
             elif mode == "edit":
                 _edit_modules(state)
+            if experimental_images or mode == "configure":
+                _images(state)
         _finish(state, output, content)
     except (ConfigError, EnvironmentFileError, OSError, ValueError) as error:
         if isinstance(error, (WizardInputError, EnvironmentFileError, OSError)):
@@ -1030,6 +1035,7 @@ def _edit_modules(state: Wizard) -> None:
                 ("models", "Model connections", "模型连接"),
                 ("processing", "Background processing schedules", "后台处理周期"),
                 ("agent", "Agent connections", "Agent 连接"),
+                ("images", "Experimental image evidence (optional)", "实验性图片证据（可跳过）"),
                 ("advanced", "Advanced limits and logging", "高级限制与日志"),
                 ("done", "Review and save", "查看并保存"),
             ],
@@ -1051,8 +1057,27 @@ def _edit_modules(state: Wizard) -> None:
             _processing(state)
         elif module == "agent":
             _agents(state)
+        elif module == "images":
+            _images(state)
         else:
             _advanced(state)
+
+
+def _client_image_consent(state: Wizard) -> None:
+    if "codex" in state.agents:
+        state.client["POWERCONTEXT_CODEX_CAPTURE_IMAGES"] = str(
+            state.ui.confirm(
+                "Authorize images for this workspace during Codex setup? The Server must have image parsing enabled.",
+                "在 Codex setup 时授权采集本项目图片？远程 Server 须已开启图片识别。",
+                default=state.values.get("POWERCONTEXT_CODEX_CAPTURE_IMAGES") == "true",
+            )
+        ).lower()
+
+
+def _images(state: Wizard) -> None:
+    from powercontext.cli.config_wizard_images import collect_images
+
+    state.patch(collect_images(state.ui, state.values))
 
 
 def _preview(state: Wizard, before: dict[str, str], after: dict[str, str]) -> None:
@@ -1087,6 +1112,19 @@ def _validate_files(state: Wizard, values: dict[str, str]) -> None:
             settings = _server_settings_from_environment()
         if settings.runtime.topic_memory_schedule_seconds is not None:
             validate_topic_memory_provider_settings(settings.inference)
+        if settings.images.enabled:
+            from powercontext.builtin.images.config import parse_profile
+            from powercontext.builtin.images.vision import VisionFailure, VisionParser
+
+            profile = parse_profile(settings.inference)
+            if profile is None:
+                message = "Image experiment requires a complete Vision connection"
+                raise WizardInputError(message)
+            try:
+                VisionParser(settings.inference).headers_for(profile)
+            except VisionFailure:
+                message = "Image experiment requires matching, valid Vision credentials"
+                raise WizardInputError(message) from None
     except ValidationError as error:
         for item in error.errors(include_input=False, include_context=False, include_url=False):
             field_name = ".".join(map(str, item["loc"])) or "server"
@@ -1345,6 +1383,24 @@ def _next_steps(state: Wizard, output: Path, client_file: Path) -> str:
             "",
         ]
     lines += _agent_installation_steps(state)
+    if state.values.get(f"{SERVER}IMAGES_ENABLED") == "true":
+        lines += [
+            "## " + ui.text("Image experiment", "图片实验"),
+            "",
+            ui.text(
+                "Static validation checks settings only. Run this explicit synthetic-image probe to test the configured Vision service; it makes one billable request and saves no image Source:",
+                "静态校验只检查配置。以下显式自制测试图探测会调用一次 Vision 服务，可能产生费用，不保存图片 Source：",
+            ),
+            "```bash",
+            f"powercontext image probe --env-file {shlex.quote(str(output))}",
+            "```",
+            "",
+            ui.text(
+                "Install powercontext[server,images] for the image decoder. Existing SQLite deployments need the registered media migration. Run the generated setup command from the workspace to authorize capture and manage the client collector. Review and trust new Codex hooks once, then use Codex normally. Check `powercontext doctor codex` and the Dashboard Images page. Unknown Codex versions fail closed; accepted record formats include CLI 0.141.0 exec and 0.162.0-alpha.2 / alpha.17.2 exec/Desktop engines. Verify actual attachment capture on your host.",
+                "请安装 powercontext[server,images] 以启用图片解码；已有 SQLite 部署需先执行注册的 media 迁移。在需要采集的项目目录执行生成的 setup 命令，授权采集并自动管理客户端采集器；首次审阅信任新的 Codex Hooks，之后正常使用 Codex。通过 `powercontext doctor codex` 和 Dashboard 图片材料页检查状态。未知 Codex 版本明确拒绝；可识别的记录格式包括 CLI 0.141.0 exec 和 0.162.0-alpha.2／alpha.17.2 exec／Desktop 内核，仍需验证当前宿主的实际附件采集。",
+            ),
+            "",
+        ]
     if "profile" in state.features:
         lines += _profile_policy_steps(state)
     lines += ["## " + ui.text("Checks and pending steps", "验收与待完成项"), ""]

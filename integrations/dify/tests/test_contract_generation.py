@@ -50,7 +50,7 @@ def repository(tmp_path: Path) -> Path:
 def generated_files(repository: Path) -> dict[str, bytes]:
     plugin = repository / "integrations/dify/plugin"
     paths = [plugin / "powercontext_dify/contract.json", *sorted((plugin / "tools").iterdir())]
-    return {str(path.relative_to(plugin)): path.read_bytes() for path in paths}
+    return {path.relative_to(plugin).as_posix(): path.read_bytes() for path in paths}
 
 
 @pytest.mark.parametrize("change", ["comment", "operation", "schema"])

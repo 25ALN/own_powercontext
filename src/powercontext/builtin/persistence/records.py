@@ -265,7 +265,8 @@ class RelationalRecordService:
         return tuple(_source_record(scope_id, item) for item, _ in stored)
 
     async def get_source(self, scope_id: str, source_type: str, source_id: str, /) -> SourceRecord:
-        self._require_content_source(source_type)
+        if source_type not in PUBLIC_SOURCE_TYPES:
+            raise InvalidBaseAccessRequestError("source_type", "must be a public Source type")
         ref = SourceRef(source_type=source_type, source_id=source_id)
         async with self._database.transaction() as connection:
             return _source_record(scope_id, await self._get_source(connection, scope_id, ref))
@@ -284,7 +285,7 @@ class RelationalRecordService:
             "version": 1,
             "endpoint": "list_sources",
             "scope_id": scope_id,
-            "source_types": [CONTENT_SOURCE_NAME],
+            "source_types": list(PUBLIC_SOURCE_TYPES),
             "authorization": "scope_read",
             "caller": caller,
             "limit": limit,
@@ -312,7 +313,7 @@ class RelationalRecordService:
                 after=after,
                 through=through,
                 limit=limit + 1,
-                source_type=CONTENT_SOURCE_NAME,
+                source_types=PUBLIC_SOURCE_TYPES,
             )
             async with aclosing(source_stream):
                 async for stored in source_stream:
@@ -861,20 +862,34 @@ async def _scope_summary(connection: AsyncConnection, scope_id: str) -> ScopeSum
     )
 
 
+PUBLIC_SOURCE_TYPES = (
+    "content",
+    "image.original",
+    "image.interpretation",
+    "experimental.image.original",
+    "experimental.image.analysis",
+)
+
+
 def _source_record(
     scope_id: str,
     stored: StoredSource,
 ) -> SourceRecord:
-    if not isinstance(stored.value, ContentSource):
+    if stored.ref.source_type not in PUBLIC_SOURCE_TYPES:
         raise BaseValueNotFoundError("source", (scope_id, stored.ref))
+    content = (
+        _source_content(stored.value)
+        if isinstance(stored.value, ContentSource)
+        else stored.value.model_dump(mode="json", by_alias=True)
+    )
     return SourceRecord(
         scope_id=scope_id,
         source_type=cast(Any, stored.ref.source_type),
         source_id=stored.ref.source_id,
-        content=_source_content(stored.value),
+        content=content,
         position=stored.journal_position,
-        content_digest=_content_digest(_source_content(stored.value)),
-        handoff_receipt=stored.value.handoff_receipt,
+        content_digest=_content_digest(content),
+        handoff_receipt=getattr(stored.value, "handoff_receipt", False),
     )
 
 

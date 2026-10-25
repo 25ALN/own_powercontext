@@ -8,6 +8,7 @@ from enum import IntEnum, StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AnyUrl,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -539,6 +540,7 @@ class DreamEvidenceKind(StrEnum):
     HANDOFF = "handoff"
     SKILL = "skill"
     PROMPT = "prompt"
+    IMAGE_ANALYSIS = "image_analysis"
     CATALOG_TARGET = "catalog_target"
     UNRESOLVED = "unresolved"
 
@@ -678,6 +680,18 @@ class ArtifactDreamingOperationCapability(BaseModel):
     operation: DreamOperation
     output_kind: OutputKind
     effect: Effect
+
+
+class ImageProcessingCapability(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    enabled: StrictBool
+    available: StrictBool
+    processing_enabled: StrictBool
+    vision_configured: StrictBool
+    profile_digest: Annotated[StrictStr | None, Field(...)]
+    error_code: Annotated[StrictStr | None, Field(...)]
 
 
 class Configuration(StrEnum):
@@ -2862,6 +2876,14 @@ class ReplaceMemoryArtifactEntry(BaseModel):
     text: Annotated[StrictStr, Field(max_length=8192, min_length=1, pattern=".*\\S.*")]
 
 
+class SourceType2(StrEnum):
+    CONTENT = "content"
+    IMAGE_ORIGINAL = "image.original"
+    IMAGE_INTERPRETATION = "image.interpretation"
+    EXPERIMENTAL_IMAGE_ORIGINAL = "experimental.image.original"
+    EXPERIMENTAL_IMAGE_ANALYSIS = "experimental.image.analysis"
+
+
 class SourceTypeReference(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -2911,6 +2933,7 @@ class ArtifactReadFamily(StrEnum):
     PROFILE = "profile"
     PROMPT = "prompt"
     TOPIC_MEMORY = "topic-memory"
+    IMAGE_ANALYSIS = "image-analysis"
 
 
 class StatsPeriod(StrEnum):
@@ -3538,36 +3561,441 @@ class CatalogTagResult(BaseModel):
     etag: Annotated[StrictStr, Field(min_length=1)]
 
 
-class AtomicMemoryWriteContent(BaseModel):
+class ExperimentalImageMediaType(StrEnum):
+    IMAGE_PNG = "image/png"
+    IMAGE_JPEG = "image/jpeg"
+
+
+class ExperimentalImageDigest(RootModel[StrictStr]):
+    root: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+
+
+class ExperimentalImageScopedSource(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    schema_: Annotated[AtomicMemoryContentSchema, Field(alias="schema")] = (
-        AtomicMemoryContentSchema.POWERCONTEXT_ATOMIC_MEMORY_V1
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    source: SourceTypeReference
+
+
+class ExperimentalImageAsset(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
     )
-    kind: Annotated[StrictStr, Field(max_length=128, min_length=1)]
-    text: Annotated[
+    asset_id: Annotated[StrictStr, Field(pattern="^ia_[0-9a-f]{64}$")]
+    digest: ExperimentalImageDigest
+    media_type: ExperimentalImageMediaType
+    byte_length: Annotated[StrictInt, Field(ge=1, le=8388608)]
+    width: Annotated[StrictInt, Field(ge=1, le=16384)]
+    height: Annotated[StrictInt, Field(ge=1, le=16384)]
+
+
+class Kind10(StrEnum):
+    EXPLICIT_UPLOAD = "explicit_upload"
+    CODEX = "codex"
+
+
+class Representation(StrEnum):
+    ORIGINAL_FILE = "original_file"
+    HOST_IMAGE = "host_image"
+
+
+class ClientVariant(StrEnum):
+    CLI_EXEC = "cli_exec"
+    CLI_TUI = "cli_tui"
+    DESKTOP = "desktop"
+
+
+class ExperimentalImageOrigin(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    kind: Kind10
+    attachment_index: Annotated[StrictInt, Field(ge=0, le=3)]
+    host_instance_id: Annotated[StrictStr | None, Field(max_length=128, min_length=1)] = None
+    session_id: Annotated[StrictStr | None, Field(max_length=128, min_length=1)] = None
+    turn_id: Annotated[StrictStr | None, Field(max_length=128, min_length=1)] = None
+    message_id: Annotated[StrictStr | None, Field(max_length=128, min_length=1)] = None
+    representation: Representation | None = None
+    client_variant: ClientVariant | None = None
+
+
+class ExperimentalImageContext(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    text: Annotated[StrictStr, Field(max_length=2048)]
+    source: ExperimentalImageScopedSource | None = None
+
+
+class PromptVersion(StrEnum):
+    IMAGE_EVIDENCE_V1 = "image-evidence-v1"
+
+
+class PreprocessingVersion(StrEnum):
+    EXIF_STRIP_V1 = "exif-strip-v1"
+
+
+class OutputMode(StrEnum):
+    PROMPTED_JSON = "prompted_json"
+
+
+class ExperimentalImageParseProfile(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    model_id: Annotated[StrictStr, Field(max_length=128, min_length=1)]
+    deployment_id: Annotated[StrictStr, Field(max_length=128, min_length=1)]
+    base_url: AnyUrl
+    prompt_version: PromptVersion
+    preprocessing_version: PreprocessingVersion
+    output_mode: OutputMode
+    timeout_seconds: Annotated[StrictInt, Field(ge=1, le=300)]
+    max_attempts: Annotated[StrictInt, Field(ge=1, le=5)]
+    max_output_tokens: Annotated[StrictInt, Field(ge=1, le=8192)]
+
+
+class ExperimentalImageEntity(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    entity_id: Annotated[StrictStr, Field(max_length=64, min_length=1)]
+    label: Annotated[StrictStr, Field(max_length=512, min_length=1)]
+
+
+class ExperimentalImageRelation(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    from_id: Annotated[StrictStr, Field(max_length=64, min_length=1)]
+    to_id: Annotated[StrictStr, Field(max_length=64, min_length=1)]
+    label: Annotated[StrictStr, Field(max_length=512, min_length=1)]
+
+
+class Readability(StrEnum):
+    READABLE = "readable"
+    PARTIAL = "partial"
+    UNREADABLE = "unreadable"
+
+
+class Uncertainty(RootModel[StrictStr]):
+    root: Annotated[StrictStr, Field(max_length=512, min_length=1)]
+
+
+class ExperimentalImageParseOutput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    readability: Readability
+    ocr_text: Annotated[StrictStr, Field(max_length=16384)]
+    visual_description: Annotated[StrictStr, Field(max_length=4096)]
+    entities: Annotated[list[ExperimentalImageEntity], Field(max_length=16)]
+    relations: Annotated[list[ExperimentalImageRelation], Field(max_length=16)]
+    uncertainties: Annotated[list[Uncertainty], Field(max_length=16)]
+
+
+class DefinitionVersion(StrEnum):
+    FIELD_1 = "1"
+
+
+class ExperimentalImageOriginalPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: Annotated[StrictStr, Field(pattern="^img_[0-9a-f]{64}$")]
+    definition_version: DefinitionVersion
+    materialization: Materialization
+    description: Annotated[StrictStr | None, Field(max_length=2048)] = None
+    asset: ExperimentalImageAsset
+    capture_key: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    origin: ExperimentalImageOrigin
+    context: ExperimentalImageContext
+
+
+class ExperimentalImageAnalysisPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: Annotated[StrictStr, Field(pattern="^imga_[0-9a-f]{64}$")]
+    definition_version: DefinitionVersion
+    materialization: Materialization
+    description: Annotated[StrictStr | None, Field(max_length=2048)] = None
+    original: ExperimentalImageScopedSource
+    task_id: Annotated[StrictStr, Field(pattern="^it_[0-9a-f]{64}$")]
+    profile_digest: ExperimentalImageDigest
+    profile: ExperimentalImageParseProfile
+    input_digest: ExperimentalImageDigest
+    context_digest: ExperimentalImageDigest
+    output: ExperimentalImageParseOutput
+
+
+class Kind101(StrEnum):
+    EXPLICIT_UPLOAD = "explicit_upload"
+    CODEX = "codex"
+
+
+class ProcessingKind(StrEnum):
+    IMAGE_INTERPRETATION = "image.interpretation"
+
+
+class MediaType(StrEnum):
+    IMAGE_PNG = "image/png"
+    IMAGE_JPEG = "image/jpeg"
+
+
+class CaptureImageRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    capture_key: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    processing_kind: ProcessingKind = ProcessingKind.IMAGE_INTERPRETATION
+    media_type: MediaType
+    bytes_base64: Annotated[
         StrictStr,
         Field(
-            description="Memory text is NFC-normalized and trimmed before enforcing an 8192 UTF-8 byte limit.",
-            min_length=1,
+            max_length=11184812,
+            min_length=4,
+            pattern="^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
         ),
     ]
+    origin: ExperimentalImageOrigin
+    context: ExperimentalImageContext
 
 
-class CreateAtomicMemoryArtifactRequest(BaseModel):
+class Operation(StrEnum):
+    RETRY = "retry"
+    REPARSE = "reparse"
+
+
+class RequestImageAnalysisRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    family: Literal["atomic-memory"]
-    content: AtomicMemoryWriteContent
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    operation: Operation
+    idempotency_key: Annotated[StrictStr, Field(max_length=256, min_length=1)]
+    original: SourceTypeReference
+    request_id: Annotated[StrictStr | None, Field(pattern="^mr_[0-9a-f]{64}$")] = None
+    expected_state_version: Annotated[StrictInt | None, Field(ge=1)] = None
+    expected_artifact_revision: Annotated[StrictInt, Field(ge=0)]
+    expected_profile_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    processing_kind: ProcessingKind = ProcessingKind.IMAGE_INTERPRETATION
 
 
-class ReplaceAtomicMemoryArtifactRequest(BaseModel):
+class Schema6(StrEnum):
+    POWERCONTEXT_MEDIA_IMAGE_V1 = "powercontext.media.image.v1"
+
+
+class ImageTechnicalMetadata(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    content: AtomicMemoryWriteContent
+    schema_: Annotated[Schema6, Field(alias="schema")] = Schema6.POWERCONTEXT_MEDIA_IMAGE_V1
+    width: Annotated[StrictInt, Field(ge=1)]
+    height: Annotated[StrictInt, Field(ge=1)]
+
+
+class MediaAsset(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    asset_id: Annotated[StrictStr, Field(pattern="^ma_[0-9a-f]{64}$")]
+    digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    media_type: MediaType
+    byte_size: Annotated[StrictInt, Field(ge=1, le=8388608)]
+    metadata: ImageTechnicalMetadata
+
+
+class ScopedMediaSource(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    source: SourceTypeReference
+
+
+class Status6(StrEnum):
+    ACCEPTED = "accepted"
+
+
+class MediaCaptureReceipt(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: Status6 = Status6.ACCEPTED
+    original: ScopedMediaSource
+    asset: MediaAsset
+    sequence: Annotated[StrictInt, Field(ge=1)]
+    request_id: Annotated[StrictStr, Field(pattern="^mr_[0-9a-f]{64}$")]
+    replayed: StrictBool = False
+
+
+class State1(StrEnum):
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+class MediaAttempt(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    attempt: Annotated[StrictInt, Field(ge=1, le=5)]
+    state: State1
+    started_at: AwareDatetime
+    finished_at: AwareDatetime | None = None
+    provider_requests: Annotated[StrictInt | None, Field(ge=0, le=1)] = 0
+    input_digest: Annotated[StrictStr | None, Field(pattern="^sha256:[0-9a-f]{64}$")] = None
+    input_tokens: Annotated[StrictInt | None, Field(ge=0)] = None
+    output_tokens: Annotated[StrictInt | None, Field(ge=0)] = None
+    latency_ms: Annotated[StrictFloat | None, Field(ge=0.0)] = None
+    http_status: Annotated[StrictInt | None, Field(ge=100, le=599)] = None
+    error_code: Annotated[StrictStr | None, Field(max_length=128)] = None
+
+
+class Schema7(StrEnum):
+    POWERCONTEXT_MEDIA_REQUEST_V1 = "powercontext.media.request.v1"
+
+
+class Operation1(StrEnum):
+    CAPTURE = "capture"
+    RETRY = "retry"
+    REPARSE = "reparse"
+
+
+class MediaRequestState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    RETRY_WAIT = "retry_wait"
+    BLOCKED = "blocked"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SUPERSEDED = "superseded"
+
+
+class ScopedMediaArtifact(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    artifact: ArtifactReference
+
+
+class EvidenceAnchor(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1)]
+    source: SourceTypeReference
+    journal_position: Annotated[StrictInt, Field(ge=1)]
+    recorded_at: AwareDatetime | None = None
+
+
+class Schema8(StrEnum):
+    POWERCONTEXT_IMAGE_ANALYSIS_V1 = "powercontext.image-analysis.v1"
+
+
+class ImageAnalysisContent(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_: Annotated[Schema8, Field(alias="schema")] = Schema8.POWERCONTEXT_IMAGE_ANALYSIS_V1
+    original: ScopedMediaSource
+    origin_anchor: EvidenceAnchor
+    profile: ExperimentalImageParseProfile
+    profile_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    input_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    context_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    context: ExperimentalImageContext
+    output: ExperimentalImageParseOutput
+    provider_revision: Annotated[StrictStr | None, Field(max_length=256)] = None
+
+
+class StatementEvidence(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    source: SourceTypeReference | None = None
+    artifact: ArtifactReference | None = None
+    via_artifact: ArtifactReference | None = None
+    anchor: EvidenceAnchor | None = None
+
+
+class Schema9(StrEnum):
+    POWERCONTEXT_MEMORY_ORDERING_V1 = "powercontext.memory-ordering.v1"
+
+
+class SourceMaterialization(StrEnum):
+    CAPTURED = "captured"
+    REFERENCED = "referenced"
+
+
+class ImageOriginalPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: StrictStr
+    definition_version: StrictStr = "1"
+    materialization: SourceMaterialization
+    description: StrictStr | None = None
+    asset: MediaAsset
+    capture_key: Annotated[StrictStr, Field(max_length=256, min_length=1)]
+    origin: ExperimentalImageOrigin
+    context: ExperimentalImageContext
+
+
+class ImageInterpretationPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: StrictStr
+    definition_version: StrictStr = "1"
+    materialization: SourceMaterialization
+    description: StrictStr | None = None
+    result: ScopedMediaArtifact
+    original: ScopedMediaSource
+    origin_anchor: EvidenceAnchor
+    projection_version: StrictStr = "1"
+    readability: Annotated[StrictStr, Field(pattern="^(readable|partial|unreadable)$")]
+    content: Annotated[StrictStr, Field(max_length=131072, min_length=1)]
+    content_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+
+
+class GetMediaAssetRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    asset_id: Annotated[StrictStr, Field(pattern="^ma_[0-9a-f]{64}$")]
+
+
+class GetMediaAssetResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    asset: MediaAsset
+    bytes_base64: Annotated[StrictStr, Field(max_length=11184812)]
+
+
+class GetMediaRequestRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    request_id: Annotated[StrictStr, Field(pattern="^mr_[0-9a-f]{64}$")]
+
+
+class ListMediaRequestsRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    processing_kind: ProcessingKind = ProcessingKind.IMAGE_INTERPRETATION
+    states: Annotated[list[MediaRequestState], Field(max_length=7)] = []
+    limit: Annotated[StrictInt, Field(ge=1, le=100)] = 50
+    cursor: Annotated[StrictStr | None, Field(max_length=2048)] = None
 
 
 class AtomicMemoryStateResponse(BaseModel):
@@ -3654,17 +4082,6 @@ class SearchAtomicMemoryResponse(BaseModel):
     )
     mode: AtomicMemorySearchMode
     hits: list[AtomicMemorySearchHit]
-
-
-class MergeAtomicMemoryRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
-    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
-    inputs: Annotated[list[AtomicMemoryInput], Field(min_length=2)]
-    content: AtomicMemoryWriteContent
-    source_refs: list[SourceReference] | None = None
-    artifact_refs: list[ArtifactReference] | None = None
 
 
 class AtomicMemoryMutationResponse(BaseModel):
@@ -4664,7 +5081,7 @@ class SourceRecord(BaseModel):
         ),
     ] = None
     scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
-    source_type: SourceType
+    source_type: SourceType2
     source_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
     content: Annotated[Any, Field(description="Persisted canonical JSON content.")]
     position: Annotated[StrictInt, Field(ge=1)]
@@ -4712,6 +5129,100 @@ class ListAccessAuditRequest(BaseModel):
     time_range: AccessAuditTimeRange | None = None
     cursor: Annotated[StrictStr | None, Field(max_length=2048)] = None
     limit: Annotated[StrictInt, Field(ge=1, le=500)] = 100
+
+
+class MediaProcessingRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_: Annotated[Schema7, Field(alias="schema")] = Schema7.POWERCONTEXT_MEDIA_REQUEST_V1
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    request_id: Annotated[StrictStr, Field(pattern="^mr_[0-9a-f]{64}$")]
+    processing_kind: ProcessingKind = ProcessingKind.IMAGE_INTERPRETATION
+    operation: Operation1
+    original: ScopedMediaSource
+    state: MediaRequestState
+    state_version: Annotated[StrictInt, Field(ge=1)]
+    profile_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    attempt_count: Annotated[StrictInt, Field(ge=0, le=5)]
+    max_attempts: Annotated[StrictInt, Field(ge=1, le=5)]
+    attempts: Annotated[list[MediaAttempt], Field(max_length=5, validate_default=True)] = []
+    result: ScopedMediaArtifact | None = None
+    publication: ScopedMediaSource | None = None
+    error_code: Annotated[StrictStr | None, Field(max_length=128)] = None
+    next_attempt_at: AwareDatetime | None = None
+    created_at: AwareDatetime
+
+
+class MediaRequestPage(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: Annotated[list[MediaProcessingRequest], Field(max_length=100)]
+    next_cursor: StrictStr | None = None
+
+
+class MemoryStatementSupport(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    statement: Annotated[StrictStr, Field(max_length=8192, min_length=1)]
+    applicability: Annotated[StrictStr | None, Field(max_length=1024)] = None
+    effective_date: date_aliased | None = None
+    evidence: Annotated[list[StatementEvidence], Field(max_length=16, validate_default=True)] = []
+
+
+class MemoryOrderingSupport(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_: Annotated[Schema9, Field(alias="schema")] = Schema9.POWERCONTEXT_MEMORY_ORDERING_V1
+    content_digest: Annotated[StrictStr, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    statements: Annotated[list[MemoryStatementSupport], Field(max_length=32, min_length=1)]
+
+
+class AtomicMemoryWriteContent(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    schema_: Annotated[AtomicMemoryContentSchema, Field(alias="schema")] = (
+        AtomicMemoryContentSchema.POWERCONTEXT_ATOMIC_MEMORY_V1
+    )
+    kind: Annotated[StrictStr, Field(max_length=128, min_length=1)]
+    ordering: MemoryOrderingSupport | None = None
+    text: Annotated[
+        StrictStr,
+        Field(
+            description="Memory text is NFC-normalized and trimmed before enforcing an 8192 UTF-8 byte limit.",
+            min_length=1,
+        ),
+    ]
+
+
+class CreateAtomicMemoryArtifactRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    family: Literal["atomic-memory"]
+    content: AtomicMemoryWriteContent
+
+
+class ReplaceAtomicMemoryArtifactRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    content: AtomicMemoryWriteContent
+
+
+class MergeAtomicMemoryRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    scope_id: Annotated[StrictStr, Field(max_length=256, min_length=1, pattern=".*\\S.*")]
+    inputs: Annotated[list[AtomicMemoryInput], Field(min_length=2)]
+    content: AtomicMemoryWriteContent
+    source_refs: list[SourceReference] | None = None
+    artifact_refs: list[ArtifactReference] | None = None
 
 
 class CreateSubjectSourceResponse(BaseModel):
@@ -4903,6 +5414,10 @@ class Capabilities(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
+    media: Annotated[
+        ImageProcessingCapability | None,
+        Field(description="Image binding configuration and storage admission readiness; this does not call Vision."),
+    ] = None
     prompts: Annotated[dict[str, PromptCapability], Field(validate_default=True)] = {}
     artifact_dreaming: Annotated[
         StrictBool, Field(description="Whether asynchronous Artifact Dream execution is configured.")

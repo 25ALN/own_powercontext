@@ -24,6 +24,7 @@ from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from powercontext.artifacts import Artifact, ArtifactDraft, ArtifactRef
+from powercontext.builtin.artifacts.atomic_memory.ordering import MemoryOrderingSupport
 from powercontext.builtin.artifacts.memory.canonical import canonical_error_code, normalize_text
 
 
@@ -52,6 +53,13 @@ class AtomicMemoryContent(BaseModel):
     kind: str = Field(min_length=1, max_length=128)
     text: str = Field(min_length=1)
     creation: AtomicMemoryCreation | None = None
+    ordering: MemoryOrderingSupport | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def exact_ordering(self):
+        if self.ordering is not None:
+            self.ordering.validate_content(self.kind, self.text)
+        return self
 
     @field_validator("kind")
     @classmethod

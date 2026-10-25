@@ -54,6 +54,17 @@ class ArtifactFamilyAccessProfile:
 
 
 ARTIFACT_FAMILY_PROFILES: dict[str, ArtifactFamilyAccessProfile] = {
+    "image-analysis": ArtifactFamilyAccessProfile(
+        family="image-analysis",
+        enabled=True,
+        share_unit="artifact",
+        shareable_states=frozenset({"active"}),
+        base_action=AccessAction.ARTIFACT_READ,
+        additional_actions=frozenset(),
+        grantable_roles=frozenset({AccessRole.ARTIFACT_VIEWER}),
+        selector="forbidden",
+        mutation_semantics=frozenset({AccessAction.ARTIFACT_WRITE}),
+    ),
     "atomic-memory": ArtifactFamilyAccessProfile(
         family="atomic-memory",
         enabled=True,

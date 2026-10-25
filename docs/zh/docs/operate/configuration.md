@@ -570,3 +570,13 @@ full-text search 仍可用。配置和 capability 验证步骤见[配置向量�
 ## Agent 集成
 
 各 Agent 的安装、连接、认证和环境变量见[对应的集成文档](../integrations/index.md)。
+
+## 可选图片识别
+
+普通安装向导提供默认关闭的图片步骤。选择独立 Vision 时，在同一 .env 保存模型、endpoint、部署标识和鉴权；选择复用时，仅设置 `POWERCONTEXT_SERVER_INFERENCE_VISION_USE_GENERATION=true`，使用已有 generation model、base URL、headers。复用目前要求 `openai-chat:` 兼容模型和显式 base URL，模型必须实际支持图片输入。
+
+服务开关是 `POWERCONTEXT_SERVER_IMAGES_ENABLED`，Codex setup 的项目授权选择是 `POWERCONTEXT_CODEX_CAPTURE_IMAGES`，两者默认 false。PNG/JPEG 解码需安装可选 `images` extra（`powercontext[server,images]`）。原始字节以 BLOB 与 Source、请求及 Artifact 历史保存在同一个耐久 SQLite 数据库中，不需要资产目录。模型配置不改写历史证据或已接收请求。已有数据库需按 `server db-migrate --bundle media` 执行显式 plan/apply 停写迁移；处理所有权变化使用既有 processing migration。旧七表／文件部署在合格转换器提供前明确拒绝迁移。完整 SQLite 备份包含媒体；逻辑归档 v1 对含媒体 Scope 在写入不完整备份前拒绝。
+
+独立配置使用 `POWERCONTEXT_SERVER_INFERENCE_VISION_MODEL`、`VISION_BASE_URL`、`VISION_DEPLOYMENT_ID` 和 `VISION_HEADERS`，其中后三者也具有完整的 `POWERCONTEXT_SERVER_INFERENCE_` 前缀。密钥保存在本地，复用时不重复设置 Vision headers。用 `powercontext image probe --env-file .env` 发送一次有费用的合成图验证，探测不保存 Source。
+
+识图成功与记忆生成分别验收。普通生成模型、embedding 和原有处理策略仍负责记忆提炼与召回，Codex 的聊天模型不会自动成为 PowerContext 的生成连接。

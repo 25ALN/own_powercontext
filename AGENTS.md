@@ -82,3 +82,15 @@ Pull requests should link the relevant issue or RFC, explain the rationale, summ
 ## Security & Configuration Tips
 
 Do not commit secrets, local virtual environments, caches, `.powercontext/`, `dist/`, or generated website output. Keep dependency changes reflected in `uv.lock`, and use `make check` to catch lock drift before review.
+
+## Image Source Experiment
+
+This worktree contains a local, opt-in Image Source experiment. Before changing this feature, read
+[the implementation guide](docs/experiments/image-source/README.md) and
+[the implementation log](docs/experiments/image-source/implementation-log.md).
+
+- Follow the guide's capture, durable original, background vision parsing, immutable analysis Source, and text-evidence flow. Keep the feature disabled by default and respect the documented scope and phase acceptance criteria.
+- For every AI coding session, record the target phase before work and update the implementation log before completion or interruption with actual changes, commands, results, limitations, and the next concrete step. Mark a phase complete only when its acceptance criteria are met.
+- Distinguish offline tests, direct hook calls, real model execution, and real host uploads. Never claim a real integration works from simulated inputs alone.
+- Run all feature commands in this worktree with a separate database, asset directory, environment file, and port. Do not reuse the primary checkout's live services or private data.
+- Keep credentials and private image evidence in ignored local storage. Do not push this experiment, create an upstream PR, or publish it unless the user explicitly requests that action.

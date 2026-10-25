@@ -61,6 +61,7 @@ class EvidenceNode(BaseModel):
         "handoff",
         "skill",
         "prompt",
+        "image_analysis",
         "catalog_target",
         "unresolved",
     ]
@@ -106,7 +107,16 @@ class ProjectedEvidence(BaseModel):
 
     evidence_id: str
     kind: Literal[
-        "source", "experience", "memory", "profile", "topic_memory", "handoff", "skill", "prompt", "catalog_target"
+        "source",
+        "experience",
+        "memory",
+        "profile",
+        "topic_memory",
+        "handoff",
+        "skill",
+        "prompt",
+        "image_analysis",
+        "catalog_target",
     ]
     text: str
     historical: bool = False

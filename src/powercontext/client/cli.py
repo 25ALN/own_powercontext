@@ -81,6 +81,7 @@ from powercontext.http import (
     CandidatePage,
     CandidateStatus,
     Capabilities,
+    CaptureImageRequest,
     ClearScopeBindingRequest,
     ClearScopeBindingResponse,
     ContextReference,
@@ -95,6 +96,7 @@ from powercontext.http import (
     ExactScopeSelection,
     ExperienceArtifact,
     ExperienceProposal,
+    ExperimentalImageMediaType,
     ExternalSkillImportMode,
     ExternalSkillResolution,
     ExtractionStatus,
@@ -104,6 +106,8 @@ from powercontext.http import (
     GenerateSkillRequest,
     GetCandidateRequest,
     GetExperienceRequest,
+    GetMediaAssetRequest,
+    GetMediaRequestRequest,
     GetSkillPackageRequest,
     GetSkillRequest,
     GetStatsRequest,
@@ -114,8 +118,12 @@ from powercontext.http import (
     ListDreamRunsRequest,
     ListExternalSkillsRequest,
     ListExternalSkillsResponse,
+    ListMediaRequestsRequest,
     ListRemoteSkillTargetsRequest,
     ListRemoteSkillTargetsResponse,
+    MediaCaptureReceipt,
+    MediaProcessingRequest,
+    MediaRequestPage,
     ModelUsageValue,
     PublishRemoteSkillRequest,
     ReadinessResponse,
@@ -125,6 +133,7 @@ from powercontext.http import (
     RemoteSkillTarget,
     RemoteSkillTargetStatus,
     RenameRemoteSkillTargetRequest,
+    RequestImageAnalysisRequest,
     ResolveExternalSkillRequest,
     ResolveScopeBindingRequest,
     ReviseCandidateRequest,
@@ -146,6 +155,7 @@ from powercontext.http import (
     SkillGenerationOrigin,
     SkillProposal,
     SkillValidationItem,
+    SourceRecord,
     SourceReference,
     StatsPeriod,
     SubtreeScopeSelection,
@@ -170,7 +180,11 @@ _ClientResponse: TypeAlias = (
     | CandidatePage
     | ArtifactPage
     | Capabilities
+    | SourceRecord
     | ExperienceArtifact
+    | MediaCaptureReceipt
+    | MediaProcessingRequest
+    | MediaRequestPage
     | ExternalSkillResolution
     | GeneratedCandidateResponse
     | HealthResponse
@@ -348,6 +362,7 @@ scope_binding_app = typer.Typer(
 )
 scope_app.add_typer(scope_binding_app, name="binding")
 candidate_app.add_typer(candidate_revise_app, name="revise")
+
 
 _BINDING_KIND_SESSION = "session"
 _BINDING_KIND_WORKSPACE = "workspace"
@@ -554,6 +569,220 @@ def clear_scope_binding(
 
     request = ClearScopeBindingRequest(key=_binding_key(integration, kind, external_id))
     asyncio.run(_execute(context, lambda client: client.clear_scope_binding(request)))
+
+
+image_app = typer.Typer(
+    name="image",
+    context_settings={"help_option_names": HELP_OPTION_NAMES},
+    help="Explicitly upload, inspect and download experimental image evidence.",
+    no_args_is_help=True,
+)
+
+
+@image_app.command("upload")
+def upload_image(
+    context: typer.Context,
+    file: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    scope_id: Annotated[str, typer.Option(help="Existing Scope receiving the image.")],
+    capture_key: Annotated[str, typer.Option(help="Stable occurrence key; reuse to replay the same upload.")],
+    context_text: Annotated[
+        str, typer.Option(help="Optional fixed text sent with the image during later parsing.")
+    ] = "",
+    media_type: Annotated[ExperimentalImageMediaType | None, typer.Option()] = None,
+) -> None:
+    """Save one PNG or JPEG; the configured background worker parses it later."""
+    try:
+        with file.open("rb") as handle:
+            data = handle.read(8 * 1024 * 1024 + 1)
+        if len(data) > 8 * 1024 * 1024:
+            _raise_bad_parameter("image exceeds 8 MiB", parameter="file")
+        if media_type is None:
+            media_type = {
+                ".png": ExperimentalImageMediaType.IMAGE_PNG,
+                ".jpg": ExperimentalImageMediaType.IMAGE_JPEG,
+                ".jpeg": ExperimentalImageMediaType.IMAGE_JPEG,
+            }.get(file.suffix.lower())
+        if media_type is None:
+            _raise_bad_parameter("specify --media-type image/png or image/jpeg", parameter="--media-type")
+        request = CaptureImageRequest.model_validate({
+            "scope_id": scope_id,
+            "capture_key": capture_key,
+            "media_type": media_type.value,
+            "bytes_base64": base64.b64encode(data).decode("ascii"),
+            "origin": {"kind": "explicit_upload", "attachment_index": 0},
+            "context": {"text": context_text},
+        })
+    except ValidationError as error:
+        _raise_invalid_request("image upload", error)
+    except (OSError, ValueError) as error:
+        _raise_bad_parameter("cannot read a valid bounded image upload", parameter="file", cause=error)
+    asyncio.run(_execute(context, lambda client: client.capture_image(request)))
+
+
+@image_app.command("probe")
+def probe_image_connection(
+    env_file: Annotated[Path, typer.Option(help="Local Server environment file; credentials stay local.")],
+) -> None:
+    """Explicitly send one synthetic image to Vision; no Source is saved."""
+    from powercontext.builtin.images.probe import probe_vision
+    from powercontext.server.configuration import server_settings_context
+
+    try:
+        with server_settings_context(env_file=env_file) as settings:
+            result = asyncio.run(probe_vision(settings.inference))
+    except (ValueError, OSError):
+        typer.echo("Cannot load the Vision configuration.", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(result, ensure_ascii=False))
+    if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@image_app.command("list")
+def list_images(
+    context: typer.Context,
+    scope_id: Annotated[str, typer.Option()],
+    cursor: Annotated[str | None, typer.Option()] = None,
+    limit: Annotated[int, typer.Option(min=1, max=100)] = 12,
+) -> None:
+    """List retained scoped image materials with cursor pagination."""
+    request = ListMediaRequestsRequest(scope_id=scope_id, cursor=cursor, limit=limit)
+    asyncio.run(_execute(context, lambda client: client.list_media_requests(request)))
+
+
+@image_app.command("status")
+def image_status(context: typer.Context) -> None:
+    """Inspect the image binding through Server capability diagnostics."""
+    asyncio.run(_execute(context, lambda client: client.get_capabilities()))
+
+
+@image_app.command("request")
+def show_image_request(
+    context: typer.Context, request_id: Annotated[str, typer.Argument()], scope_id: Annotated[str, typer.Option()]
+) -> None:
+    try:
+        request = GetMediaRequestRequest(scope_id=scope_id, request_id=request_id)
+    except ValidationError as error:
+        _raise_invalid_request("image request", error)
+    asyncio.run(_execute(context, lambda client: client.get_media_request(request)))
+
+
+@image_app.command("source")
+def show_image_source(
+    context: typer.Context,
+    source_id: Annotated[str, typer.Argument()],
+    scope_id: Annotated[str, typer.Option()],
+    source_type: Annotated[str, typer.Option()] = "image.interpretation",
+) -> None:
+    asyncio.run(_execute(context, lambda client: client.get_source(scope_id, source_type, source_id)))
+
+
+@image_app.command("retry")
+def retry_image(
+    context: typer.Context,
+    request_id: Annotated[str, typer.Argument()],
+    original_source_id: Annotated[str, typer.Option()],
+    scope_id: Annotated[str, typer.Option()],
+    retry_key: Annotated[str, typer.Option()],
+    expected_state_version: Annotated[int, typer.Option(min=1)],
+    expected_artifact_revision: Annotated[int, typer.Option(min=0)],
+    expected_profile_digest: Annotated[str, typer.Option()],
+) -> None:
+    try:
+        request = RequestImageAnalysisRequest.model_validate({
+            "scope_id": scope_id,
+            "operation": "retry",
+            "idempotency_key": retry_key,
+            "request_id": request_id,
+            "expected_state_version": expected_state_version,
+            "original": {"source_type": "image.original", "source_id": original_source_id},
+            "expected_artifact_revision": expected_artifact_revision,
+            "expected_profile_digest": expected_profile_digest,
+        })
+    except ValidationError as error:
+        _raise_invalid_request("image analysis", error)
+    asyncio.run(_execute(context, lambda client: client.request_image_analysis(request)))
+
+
+@image_app.command("reparse")
+def reparse_image(
+    context: typer.Context,
+    original_source_id: Annotated[str, typer.Argument()],
+    scope_id: Annotated[str, typer.Option()],
+    reparse_key: Annotated[str, typer.Option()],
+    expected_artifact_revision: Annotated[int, typer.Option(min=0)],
+    expected_profile_digest: Annotated[str, typer.Option()],
+    request_id: Annotated[str | None, typer.Option()] = None,
+    expected_state_version: Annotated[int | None, typer.Option(min=1)] = None,
+) -> None:
+    try:
+        request = RequestImageAnalysisRequest.model_validate({
+            "scope_id": scope_id,
+            "operation": "reparse",
+            "idempotency_key": reparse_key,
+            "request_id": request_id,
+            "expected_state_version": expected_state_version,
+            "original": {"source_type": "image.original", "source_id": original_source_id},
+            "expected_artifact_revision": expected_artifact_revision,
+            "expected_profile_digest": expected_profile_digest,
+        })
+    except ValidationError as error:
+        _raise_invalid_request("image analysis", error)
+    asyncio.run(_execute(context, lambda client: client.request_image_analysis(request)))
+
+
+@image_app.command("download")
+def download_image(
+    context: typer.Context,
+    asset_id: Annotated[str, typer.Argument(help="Exact retained asset ID.")],
+    scope_id: Annotated[str, typer.Option()],
+    output: Annotated[Path, typer.Option(help="New output file; an existing file is never overwritten.")],
+) -> None:
+    try:
+        request = GetMediaAssetRequest(scope_id=scope_id, asset_id=asset_id)
+    except ValidationError as error:
+        _raise_invalid_request("image download", error)
+    asyncio.run(_download_image(context, request, output))
+
+
+async def _download_image(context: typer.Context, request: GetMediaAssetRequest, output: Path) -> None:
+    options = _options(context)
+    try:
+        token = None if options.api_token is None else options.api_token.get_secret_value()
+        async with PowerContextClient(
+            options.server_url, token=token, timeout=options.timeout, allow_insecure_http=options.allow_insecure_http
+        ) as client:
+            response = await client.get_media_asset(request)
+        data = base64.b64decode(response.bytes_base64, validate=True)
+        if len(data) != response.asset.byte_size or (
+            "sha256:" + hashlib.sha256(data).hexdigest() != response.asset.digest
+        ):
+            raise ValueError("downloaded image digest does not match")  # noqa: TRY003, TRY301
+    except ClientError as error:
+        typer.echo(_error_message(error), err=True)
+        raise typer.Exit(code=1) from error
+    except ValueError as error:
+        typer.echo("Cannot verify the downloaded image.", err=True)
+        raise typer.Exit(code=1) from error
+    try:
+        saved = await asyncio.to_thread(_save_image_download, output, data)
+    except OSError as error:
+        _raise_bad_parameter("cannot save the verified image", parameter="--output", cause=error)
+    typer.echo(str(saved))
+
+
+def _save_image_download(output: Path, data: bytes) -> Path:
+    descriptor, name = tempfile.mkstemp(prefix=".image-download-", dir=output.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.link(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return output.resolve()
 
 
 @dataclass(frozen=True, slots=True)
@@ -2062,10 +2291,14 @@ def _dump_json_response(response: _ClientResponse) -> bool:
     if not isinstance(
         response,
         (
+            SourceRecord,
             Candidate,
             CandidateHistory,
             CandidatePage,
             ExperienceArtifact,
+            MediaCaptureReceipt,
+            MediaProcessingRequest,
+            MediaRequestPage,
             ExternalSkillResolution,
             GeneratedCandidateResponse,
             ListExternalSkillsResponse,
@@ -2157,6 +2390,8 @@ def _print_capabilities(response: Capabilities) -> None:
     typer.echo(f"Handoff generation: {'enabled' if response.handoff_generation else 'disabled'}")
     typer.echo(f"Search modes: {_items(response.search_modes)}")
     typer.echo(f"Context versions: {_items(response.context_versions)}")
+    if response.media is not None:
+        typer.echo("Images: " + response.media.model_dump_json())
 
 
 def _print_extraction_diagnostics(status: ExtractionStatus | None) -> None:
@@ -2334,7 +2569,11 @@ def register_commands(cli: typer.Typer) -> set[str]:
     cli.add_typer(experience_app, name="experience")
     cli.add_typer(skill_app, name="skill")
     cli.add_typer(external_skill_app, name="external-skill")
+
     cli.add_typer(scope_app, name="scope")
+
+    cli.add_typer(image_app, name="image")
+
     return {
         "capabilities",
         "stats",
@@ -2348,6 +2587,7 @@ def register_commands(cli: typer.Typer) -> set[str]:
         "skill",
         "external-skill",
         "scope",
+        "image",
     }
 
 

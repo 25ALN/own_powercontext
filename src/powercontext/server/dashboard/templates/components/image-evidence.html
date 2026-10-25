@@ -1,0 +1,50 @@
+<!--
+Copyright (c) 2026 OceanBase.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+{% set image = source.image %}
+<div class="alert alert-info">{{ t.image_interpretation_notice }}</div>
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <span class="badge bg-green-lt">{{ t.image_host_saved if image.host_image else t.image_original_saved }}</span>
+  <span class="badge bg-blue-lt">{{ t.get('image_state_' ~ image.state, image.state) }}</span>
+</div>
+<p class="text-secondary">{{ t.image_memory_separate }}</p>
+{% if image.host_image %}<p class="text-secondary">{{ t.image_host_notice }}</p>{% endif %}
+<a href="{{ image.asset_url }}" target="_blank" rel="noopener">{{ t.image_open_original }}</a>
+<img src="{{ image.asset_url }}" alt="{{ t.image_original }}" class="d-block img-fluid rounded border my-3" style="max-height: 50vh; object-fit: contain">
+{% if image.error_code %}<p class="text-danger">{{ t.image_error }}: <code>{{ image.error_code }}</code></p>{% endif %}
+{% if image.output %}
+  <h3>{{ t.image_readability }}: {{ t['image_readability_' ~ image.output.readability] }}</h3>
+  {% if image.output.readability == 'unreadable' %}<p class="text-secondary">{{ t.image_audit_only }}</p>{% endif %}
+  <h3>{{ t.image_ocr }}</h3><div class="original-content">{{ image.output.ocr_text }}</div>
+  <h3 class="mt-3">{{ t.image_description }}</h3><p>{{ image.output.visual_description }}</p>
+  {% if image.output.uncertainties %}<h3>{{ t.image_uncertainties }}</h3><ul>{% for item in image.output.uncertainties %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  {% if image.output.entities %}<h3>{{ t.image_entities }}</h3><ul>{% for item in image.output.entities %}<li><code>{{ item.entity_id }}</code>: {{ item.label }}</li>{% endfor %}</ul>{% endif %}
+  {% if image.output.relations %}<h3>{{ t.image_relations }}</h3><ul>{% for item in image.output.relations %}<li>{{ item.from_id }} → {{ item.to_id }}: {{ item.label }}</li>{% endfor %}</ul>{% endif %}
+{% endif %}
+<details class="mt-3"><summary>{{ t.image_provenance }}</summary>
+  <dl class="mt-2">
+    <dt>{{ t.image_attempts }}</dt><dd>{{ image.attempt_count }} / {{ image.max_attempts }}</dd>
+    {% if image.profile %}
+    <dt>{{ t.image_model }}</dt><dd>{{ image.profile.model_id }}</dd>
+    <dt>{{ t.image_deployment }}</dt><dd>{{ image.profile.deployment_id }}</dd>
+    {% endif %}
+    <dt>{{ t.image_original }}</dt><dd><code>{{ image.original_source_id }}</code></dd>
+    <dt>{{ t.image_digest }}</dt><dd><code>{{ image.asset.digest }}</code></dd>
+    <dt>{{ t.image_task }}</dt><dd><code>{{ image.task_id }}</code></dd>
+    {% if image.origin.client_variant %}<dt>{{ t.image_host }}</dt><dd>{{ image.origin.client_variant }}</dd>{% endif %}
+    {% if image.origin.message_id %}<dt>{{ t.image_message }}</dt><dd><code>{{ image.origin.message_id }}</code></dd>{% endif %}
+  </dl>
+</details>

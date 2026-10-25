@@ -179,6 +179,8 @@ _MODEL_ENVIRONMENT_HINTS: dict[str, tuple[str, ...]] = {
 }
 
 _BASE_ENVIRONMENT: dict[str, str] = {
+    "POWERCONTEXT_SERVER_IMAGES_ENABLED": "false",
+    "POWERCONTEXT_CODEX_CAPTURE_IMAGES": "false",
     "POWERCONTEXT_SERVER_HTTP_HOST": "127.0.0.1",
     "POWERCONTEXT_SERVER_HTTP_PORT": "8000",
     "POWERCONTEXT_SERVER_MCP_ENABLED": "true",
@@ -364,13 +366,21 @@ def init_command(
     template: Annotated[
         bool, typer.Option("--template", help="Use the basic model-free template instead of the guided setup.")
     ] = False,
+    experimental_images: Annotated[
+        bool, typer.Option(help="Include the optional image evidence experiment in guided setup.")
+    ] = False,
 ) -> None:
     """Create a working configuration through a short guided setup."""
 
     if not template:
         from powercontext.cli.config_wizard import run_wizard
 
-        run_wizard(output, language=None if language is None else language.value, advanced=advanced)
+        run_wizard(
+            output,
+            language=None if language is None else language.value,
+            advanced=advanced,
+            experimental_images=experimental_images,
+        )
         return
 
     if output.exists() and not force:

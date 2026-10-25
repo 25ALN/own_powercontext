@@ -237,6 +237,9 @@ non_profile_reason = "Reports scoped recall-token estimates after completed turn
 id = "claude-code:SessionStart"
 capabilities = ["context_injection"]
 [[toolsets.tools]]
+id = "codex:Interrupt"
+non_profile_reason = "Optionally retains enabled image attachments after interrupted turns."
+[[toolsets.tools]]
 id = "claude-code:UserPromptSubmit"
 capabilities = ["source_capture", "context_injection", "flush_or_checkpoint"]
 [[toolsets.tools]]

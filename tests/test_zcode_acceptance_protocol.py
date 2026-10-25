@@ -16,6 +16,10 @@
 
 import asyncio
 import json
+import time
+from contextlib import nullcontext
+from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -37,6 +41,7 @@ from powercontext.builtin.artifacts.atomic_memory.reconciliation import (
 from powercontext.builtin.inference.pydantic_ai import PydanticAIStructuredGenerator
 from powercontext.sources import SourceRef
 
+from .e2e.zcode_acceptance.lifecycle import runtime_faults
 from .e2e.zcode_acceptance.protocol import (
     CaptureResponseGate,
     HostModelFixture,
@@ -200,6 +205,52 @@ def test_capture_gate_has_bounded_failure_without_release():
     assert gate.accepted.is_set()
     assert gate.release_timed_out
     assert sent == []
+
+
+@pytest.mark.parametrize("terminal", ["unknown", "failed"])
+def test_late_capture_fault_waits_for_hook_state_after_cli_completion(terminal):
+    class ProbeComplete(Exception):
+        pass
+
+    run: Any = SimpleNamespace(
+        run_id="scripted-late-capture",
+        observer=SimpleNamespace(capture_response_gate=None),
+        budget=time.monotonic() + 2,
+        scenario=lambda _: nullcontext([]),
+    )
+    reads = 0
+
+    def invoke(prompt):
+        run.gate = run.observer.capture_response_gate
+        run.gate.accepted.set()
+        run.gate.receipt = {"source": {"name": "content", "source_id": "source-1"}, "position": 1}
+        return {"sessionId": "scripted-session"}
+
+    def observations(session):
+        nonlocal reads
+        assert session == "scripted-session"
+        reads += 1
+        # An early release lets the host learn the accepted receipt instead of
+        # reaching the timeout required by this fault injection.
+        state = "accepted" if run.gate.evidence()["explicitly_released"] else "running" if reads == 1 else terminal
+        return [{"event": "UserPromptSubmit", "stages": {"capture": {"state": state}}}]
+
+    def evidence(name, value):
+        assert name == "late-capture-attempt"
+        assert value["capture"]["state"] == terminal
+        assert value["accepted_receipt_within_budget"]
+        assert value["response_gate"]["explicitly_released"]
+        if terminal == "unknown":
+            raise ProbeComplete
+        return "evidence/late-capture-attempt.json"
+
+    run.invoke, run.observations, run.evidence = invoke, observations, evidence
+    if terminal == "unknown":
+        with pytest.raises(ProbeComplete):
+            runtime_faults(run)
+    else:
+        with pytest.raises(AssertionError, match="late_write_not_observed_as_unknown"):
+            runtime_faults(run)
 
 
 @pytest.mark.parametrize("duplicate", [False, True])

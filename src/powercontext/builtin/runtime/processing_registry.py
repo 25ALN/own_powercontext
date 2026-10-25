@@ -50,12 +50,19 @@ def processing_capabilities(config: BuiltinConfig) -> tuple[str, ...]:
     declared = config.runtime.artifact_processing_families
     if declared is not None:
         return tuple(sorted(declared))
+    from powercontext.builtin.images.config import parse_profile
+
+    try:
+        image_profile = parse_profile(config.inference)
+    except ValueError:
+        image_profile = None
+    image_families = ["image-analysis"] if image_profile is not None else []
     if config.inference.generation_model is None:
-        return ()
+        return tuple(image_families)
     from powercontext.builtin.runtime.composition import BuiltinConfigurationError
     from powercontext.builtin.runtime.topic_memory_processing import validate_topic_memory_provider_settings
 
-    families = ["memory", "experience", "profile"]
+    families = ["memory", "experience", "profile", *image_families]
     try:
         validate_topic_memory_provider_settings(config.inference)
     except BuiltinConfigurationError:
@@ -113,6 +120,11 @@ def canonical_processing_manifest(config: BuiltinConfig) -> dict[str, Any]:
             SKILL_DREAM_BINDING: "skill",
             HANDOFF_DREAM_BINDING: "handoff",
             PROMPT_DREAM_BINDING: "prompt",
+            **(
+                {"image-interpretation": "image-analysis"}
+                if "image-analysis" in processing_capabilities(config)
+                else {}
+            ),
         },
         "legacy_automatic_bindings": sorted(automatic),
     }

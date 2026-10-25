@@ -294,7 +294,7 @@ def test_powercontext_plugin_advertises_the_one_turn_handoff() -> None:
 def test_plugin_reports_token_savings_from_a_bounded_stop_hook() -> None:
     configuration = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
 
-    assert set(configuration["hooks"]) == {"UserPromptSubmit", "SessionStart", "PreToolUse", "Stop"}
+    assert set(configuration["hooks"]) == {"UserPromptSubmit", "SessionStart", "PreToolUse", "Stop", "Interrupt"}
     hook = configuration["hooks"]["Stop"][0]["hooks"][0]
     assert hook == {
         "type": "command",

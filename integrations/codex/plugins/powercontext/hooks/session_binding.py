@@ -92,7 +92,7 @@ class _HttpStatusError(RuntimeError):
         super().__init__(f"PowerContext returned HTTP {status}")
 
 
-def main(settings: CodexPluginSettings | None = None) -> int:
+def main(settings: CodexPluginSettings | None = None) -> int:  # noqa: C901 - Keep the session startup lifecycle together.
     try:
         payload = cast(dict[str, Any], json.load(sys.stdin))
         session_id = payload.get("session_id")
@@ -102,6 +102,12 @@ def main(settings: CodexPluginSettings | None = None) -> int:
         source = payload.get("source")
         if not isinstance(source, str) or source not in _LIFECYCLES:
             settings = CodexPluginSettings() if settings is None else settings
+            if settings.capture_images:
+                # Optional capture recovery must not interrupt binding or bootstrap delivery.
+                with suppress(Exception):
+                    from image_desktop_watch import launch_watch
+
+                    launch_watch()
             resolve_scope_id(
                 cwd,
                 session_id=session_id,
@@ -113,6 +119,12 @@ def main(settings: CodexPluginSettings | None = None) -> int:
         previous_receipt = load_receipt_state(session_id)
         try:
             settings = CodexPluginSettings() if settings is None else settings
+            if settings.capture_images:
+                # Optional capture recovery must not interrupt binding or bootstrap delivery.
+                with suppress(Exception):
+                    from image_desktop_watch import launch_watch
+
+                    launch_watch()
         except Exception:
             _clear_observed_receipt(session_id, previous_receipt)
             return 0

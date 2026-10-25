@@ -52,7 +52,7 @@ def test_local_wizard_connects_dashboard_api_and_mcp(tmp_path: Path, require_aut
         ["init", "--language", "en", "--output", str(output)],
         input=(
             f"sqlite\n{tmp_path / 'memory.db'}\nlocal\nbase\ny\n{port}\n{authentication_answer}\n"
-            "codex\ndefault\nnone\ny\n"
+            "codex\ndefault\nnone\nn\ny\n"
         ),
     )
     assert result.exit_code == 0, result.output

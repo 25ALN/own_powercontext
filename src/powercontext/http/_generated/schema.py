@@ -10,6 +10,173 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
         "version": "1.4.0",
     },
     "paths": {
+        "/v1/images/capture": {
+            "post": {
+                "tags": ["media"],
+                "summary": "Capture image bytes and a durable interpretation request",
+                "operationId": "capture_image",
+                "requestBody": {
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CaptureImageRequest"}}},
+                    "required": True,
+                },
+                "responses": {
+                    "202": {
+                        "description": "Durable receipt.",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/MediaCaptureReceipt"}}
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "409": {"$ref": "#/components/responses/Conflict"},
+                    "422": {"$ref": "#/components/responses/InvalidRequest"},
+                    "503": {"$ref": "#/components/responses/Unavailable"},
+                    "500": {"$ref": "#/components/responses/InternalError"},
+                    "413": {
+                        "description": "Image size or format rejected before acceptance.",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+                    },
+                    "415": {
+                        "description": "Image size or format rejected before acceptance.",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+                    },
+                },
+                "x-powercontext-scope-mode": "current",
+                "x-powercontext-access": {
+                    "action": "scope.contribute",
+                    "resource": {"type": "scope", "scope-id-from": "scope_id"},
+                },
+            }
+        },
+        "/v1/media/assets/get": {
+            "post": {
+                "tags": ["media"],
+                "summary": "Read exact retained media bytes",
+                "operationId": "get_media_asset",
+                "requestBody": {
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetMediaAssetRequest"}}},
+                    "required": True,
+                },
+                "responses": {
+                    "200": {
+                        "description": "Exact stored value; no model call.",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/GetMediaAssetResponse"}}
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "409": {"$ref": "#/components/responses/Conflict"},
+                    "422": {"$ref": "#/components/responses/InvalidRequest"},
+                    "503": {"$ref": "#/components/responses/Unavailable"},
+                    "500": {"$ref": "#/components/responses/InternalError"},
+                },
+                "x-powercontext-scope-mode": "current",
+                "x-powercontext-access": {
+                    "action": "scope.read",
+                    "resource": {"type": "scope", "scope-id-from": "scope_id"},
+                },
+            }
+        },
+        "/v1/media/requests/get": {
+            "post": {
+                "tags": ["media"],
+                "summary": "Read an exact media request",
+                "operationId": "get_media_request",
+                "requestBody": {
+                    "content": {
+                        "application/json": {"schema": {"$ref": "#/components/schemas/GetMediaRequestRequest"}}
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": {
+                        "description": "Exact stored value; no model call.",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/MediaProcessingRequest"}}
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "409": {"$ref": "#/components/responses/Conflict"},
+                    "422": {"$ref": "#/components/responses/InvalidRequest"},
+                    "503": {"$ref": "#/components/responses/Unavailable"},
+                    "500": {"$ref": "#/components/responses/InternalError"},
+                },
+                "x-powercontext-scope-mode": "current",
+                "x-powercontext-access": {
+                    "action": "scope.read",
+                    "resource": {"type": "scope", "scope-id-from": "scope_id"},
+                },
+            }
+        },
+        "/v1/media/requests/list": {
+            "post": {
+                "tags": ["media"],
+                "summary": "List scoped media requests with bounded keyset pagination",
+                "operationId": "list_media_requests",
+                "requestBody": {
+                    "content": {
+                        "application/json": {"schema": {"$ref": "#/components/schemas/ListMediaRequestsRequest"}}
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "200": {
+                        "description": "Exact stored value; no model call.",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MediaRequestPage"}}},
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "409": {"$ref": "#/components/responses/Conflict"},
+                    "422": {"$ref": "#/components/responses/InvalidRequest"},
+                    "503": {"$ref": "#/components/responses/Unavailable"},
+                    "500": {"$ref": "#/components/responses/InternalError"},
+                },
+                "x-powercontext-scope-mode": "current",
+                "x-powercontext-access": {
+                    "action": "scope.read",
+                    "resource": {"type": "scope", "scope-id-from": "scope_id"},
+                },
+            }
+        },
+        "/v1/images/analysis/request": {
+            "post": {
+                "tags": ["media"],
+                "summary": "Retry a failed interpretation or explicitly reparse an original",
+                "operationId": "request_image_analysis",
+                "requestBody": {
+                    "content": {
+                        "application/json": {"schema": {"$ref": "#/components/schemas/RequestImageAnalysisRequest"}}
+                    },
+                    "required": True,
+                },
+                "responses": {
+                    "202": {
+                        "description": "Durable receipt.",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/MediaProcessingRequest"}}
+                        },
+                    },
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "409": {"$ref": "#/components/responses/Conflict"},
+                    "422": {"$ref": "#/components/responses/InvalidRequest"},
+                    "503": {"$ref": "#/components/responses/Unavailable"},
+                    "500": {"$ref": "#/components/responses/InternalError"},
+                },
+                "x-powercontext-scope-mode": "current",
+                "x-powercontext-access": {
+                    "action": "scope.contribute",
+                    "resource": {"type": "scope", "scope-id-from": "scope_id"},
+                },
+            }
+        },
         "/v1/atomic-memory/list": {
             "post": {
                 "tags": ["atomic-memory"],
@@ -4051,7 +4218,16 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                         "name": "source_type",
                         "in": "path",
                         "required": True,
-                        "schema": {"type": "string", "enum": ["content"]},
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "content",
+                                "image.original",
+                                "image.interpretation",
+                                "experimental.image.original",
+                                "experimental.image.analysis",
+                            ],
+                        },
                     },
                     {
                         "name": "source_id",
@@ -5600,6 +5776,7 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                         "default": "powercontext.atomic-memory.v1",
                     },
                     "kind": {"type": "string", "maxLength": 128, "minLength": 1},
+                    "ordering": {"allOf": [{"$ref": "#/components/schemas/MemoryOrderingSupport"}], "nullable": True},
                     "text": {
                         "type": "string",
                         "minLength": 1,
@@ -6514,6 +6691,7 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                     "handoff",
                     "skill",
                     "prompt",
+                    "image_analysis",
                     "catalog_target",
                     "unresolved",
                 ],
@@ -6875,8 +7053,41 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                 "type": "object",
                 "required": ["operation", "output_kind", "effect"],
             },
+            "ImageProcessingCapability": {
+                "properties": {
+                    "enabled": {"type": "boolean"},
+                    "available": {"type": "boolean"},
+                    "processing_enabled": {"type": "boolean"},
+                    "vision_configured": {"type": "boolean"},
+                    "profile_digest": {"type": "string", "nullable": True},
+                    "error_code": {"type": "string", "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "enabled",
+                    "available",
+                    "processing_enabled",
+                    "vision_configured",
+                    "profile_digest",
+                    "error_code",
+                ],
+            },
             "Capabilities": {
                 "properties": {
+                    "media": {
+                        "allOf": [{"$ref": "#/components/schemas/ImageProcessingCapability"}],
+                        "description": "Image "
+                        "binding "
+                        "configuration "
+                        "and storage "
+                        "admission "
+                        "readiness; "
+                        "this does "
+                        "not call "
+                        "Vision.",
+                        "nullable": True,
+                    },
                     "prompts": {
                         "additionalProperties": {"$ref": "#/components/schemas/PromptCapability"},
                         "type": "object",
@@ -11844,7 +12055,16 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                         "nullable": True,
                     },
                     "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
-                    "source_type": {"type": "string", "enum": ["content"]},
+                    "source_type": {
+                        "type": "string",
+                        "enum": [
+                            "content",
+                            "image.original",
+                            "image.interpretation",
+                            "experimental.image.original",
+                            "experimental.image.analysis",
+                        ],
+                    },
                     "source_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
                     "content": {"description": "Persisted canonical JSON content."},
                     "position": {"type": "integer", "minimum": 1.0},
@@ -11923,6 +12143,7 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                     "profile",
                     "prompt",
                     "topic-memory",
+                    "image-analysis",
                 ],
             },
             "StatsPeriod": {"type": "string", "enum": ["today", "7d", "30d"]},
@@ -12582,6 +12803,570 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                 "type": "object",
                 "required": ["versions"],
             },
+            "ExperimentalImageMediaType": {"type": "string", "enum": ["image/png", "image/jpeg"]},
+            "ExperimentalImageDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "ExperimentalImageScopedSource": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "source": {"$ref": "#/components/schemas/SourceTypeReference"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "source"],
+            },
+            "ExperimentalImageAsset": {
+                "properties": {
+                    "asset_id": {"type": "string", "pattern": "^ia_[0-9a-f]{64}$"},
+                    "digest": {"$ref": "#/components/schemas/ExperimentalImageDigest"},
+                    "media_type": {"$ref": "#/components/schemas/ExperimentalImageMediaType"},
+                    "byte_length": {"type": "integer", "maximum": 8388608.0, "minimum": 1.0},
+                    "width": {"type": "integer", "maximum": 16384.0, "minimum": 1.0},
+                    "height": {"type": "integer", "maximum": 16384.0, "minimum": 1.0},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["asset_id", "digest", "media_type", "byte_length", "width", "height"],
+            },
+            "ExperimentalImageOrigin": {
+                "properties": {
+                    "kind": {"type": "string", "enum": ["explicit_upload", "codex"]},
+                    "attachment_index": {"type": "integer", "maximum": 3.0, "minimum": 0.0},
+                    "host_instance_id": {"type": "string", "maxLength": 128, "minLength": 1, "nullable": True},
+                    "session_id": {"type": "string", "maxLength": 128, "minLength": 1, "nullable": True},
+                    "turn_id": {"type": "string", "maxLength": 128, "minLength": 1, "nullable": True},
+                    "message_id": {"type": "string", "maxLength": 128, "minLength": 1, "nullable": True},
+                    "representation": {"type": "string", "enum": ["original_file", "host_image"], "nullable": True},
+                    "client_variant": {"type": "string", "enum": ["cli_exec", "cli_tui", "desktop"], "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["kind", "attachment_index"],
+            },
+            "ExperimentalImageContext": {
+                "properties": {
+                    "text": {"type": "string", "maxLength": 2048},
+                    "source": {
+                        "allOf": [{"$ref": "#/components/schemas/ExperimentalImageScopedSource"}],
+                        "nullable": True,
+                    },
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["text"],
+            },
+            "ExperimentalImageParseProfile": {
+                "properties": {
+                    "model_id": {"type": "string", "maxLength": 128, "minLength": 1},
+                    "deployment_id": {"type": "string", "maxLength": 128, "minLength": 1},
+                    "base_url": {"type": "string", "maxLength": 2048, "minLength": 1, "format": "uri"},
+                    "prompt_version": {"type": "string", "enum": ["image-evidence-v1"]},
+                    "preprocessing_version": {"type": "string", "enum": ["exif-strip-v1"]},
+                    "output_mode": {"type": "string", "enum": ["prompted_json"]},
+                    "timeout_seconds": {"type": "integer", "maximum": 300.0, "minimum": 1.0},
+                    "max_attempts": {"type": "integer", "maximum": 5.0, "minimum": 1.0},
+                    "max_output_tokens": {"type": "integer", "maximum": 8192.0, "minimum": 1.0},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "model_id",
+                    "deployment_id",
+                    "base_url",
+                    "prompt_version",
+                    "preprocessing_version",
+                    "output_mode",
+                    "timeout_seconds",
+                    "max_attempts",
+                    "max_output_tokens",
+                ],
+            },
+            "ExperimentalImageEntity": {
+                "properties": {
+                    "entity_id": {"type": "string", "maxLength": 64, "minLength": 1},
+                    "label": {"type": "string", "maxLength": 512, "minLength": 1},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["entity_id", "label"],
+            },
+            "ExperimentalImageRelation": {
+                "properties": {
+                    "from_id": {"type": "string", "maxLength": 64, "minLength": 1},
+                    "to_id": {"type": "string", "maxLength": 64, "minLength": 1},
+                    "label": {"type": "string", "maxLength": 512, "minLength": 1},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["from_id", "to_id", "label"],
+            },
+            "ExperimentalImageParseOutput": {
+                "properties": {
+                    "readability": {"type": "string", "enum": ["readable", "partial", "unreadable"]},
+                    "ocr_text": {"type": "string", "maxLength": 16384},
+                    "visual_description": {"type": "string", "maxLength": 4096},
+                    "entities": {
+                        "items": {"$ref": "#/components/schemas/ExperimentalImageEntity"},
+                        "type": "array",
+                        "maxItems": 16,
+                    },
+                    "relations": {
+                        "items": {"$ref": "#/components/schemas/ExperimentalImageRelation"},
+                        "type": "array",
+                        "maxItems": 16,
+                    },
+                    "uncertainties": {
+                        "items": {"type": "string", "maxLength": 512, "minLength": 1},
+                        "type": "array",
+                        "maxItems": 16,
+                    },
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["readability", "ocr_text", "visual_description", "entities", "relations", "uncertainties"],
+            },
+            "ExperimentalImageOriginalPayload": {
+                "properties": {
+                    "name": {"type": "string", "pattern": "^img_[0-9a-f]{64}$"},
+                    "definition_version": {"type": "string", "enum": ["1"]},
+                    "materialization": {"type": "string", "enum": ["captured"]},
+                    "description": {"type": "string", "maxLength": 2048, "nullable": True},
+                    "asset": {"$ref": "#/components/schemas/ExperimentalImageAsset"},
+                    "capture_key": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "origin": {"$ref": "#/components/schemas/ExperimentalImageOrigin"},
+                    "context": {"$ref": "#/components/schemas/ExperimentalImageContext"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "name",
+                    "definition_version",
+                    "materialization",
+                    "asset",
+                    "capture_key",
+                    "origin",
+                    "context",
+                ],
+            },
+            "ExperimentalImageAnalysisPayload": {
+                "properties": {
+                    "name": {"type": "string", "pattern": "^imga_[0-9a-f]{64}$"},
+                    "definition_version": {"type": "string", "enum": ["1"]},
+                    "materialization": {"type": "string", "enum": ["captured"]},
+                    "description": {"type": "string", "maxLength": 2048, "nullable": True},
+                    "original": {"$ref": "#/components/schemas/ExperimentalImageScopedSource"},
+                    "task_id": {"type": "string", "pattern": "^it_[0-9a-f]{64}$"},
+                    "profile_digest": {"$ref": "#/components/schemas/ExperimentalImageDigest"},
+                    "profile": {"$ref": "#/components/schemas/ExperimentalImageParseProfile"},
+                    "input_digest": {"$ref": "#/components/schemas/ExperimentalImageDigest"},
+                    "context_digest": {"$ref": "#/components/schemas/ExperimentalImageDigest"},
+                    "output": {"$ref": "#/components/schemas/ExperimentalImageParseOutput"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "name",
+                    "definition_version",
+                    "materialization",
+                    "original",
+                    "task_id",
+                    "profile_digest",
+                    "profile",
+                    "input_digest",
+                    "context_digest",
+                    "output",
+                ],
+            },
+            "ClientVariant": {"type": "string", "enum": ["cli_exec", "cli_tui", "desktop"]},
+            "Kind10": {"type": "string", "enum": ["explicit_upload", "codex"]},
+            "Representation": {"type": "string", "enum": ["original_file", "host_image"]},
+            "CaptureImageRequest": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "capture_key": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "processing_kind": {
+                        "type": "string",
+                        "enum": ["image.interpretation"],
+                        "default": "image.interpretation",
+                    },
+                    "media_type": {"type": "string", "enum": ["image/png", "image/jpeg"]},
+                    "bytes_base64": {
+                        "type": "string",
+                        "maxLength": 11184812,
+                        "minLength": 4,
+                        "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                    },
+                    "origin": {"$ref": "#/components/schemas/ExperimentalImageOrigin"},
+                    "context": {"$ref": "#/components/schemas/ExperimentalImageContext"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "capture_key", "media_type", "bytes_base64", "origin", "context"],
+            },
+            "RequestImageAnalysisRequest": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "operation": {"type": "string", "enum": ["retry", "reparse"]},
+                    "idempotency_key": {"type": "string", "maxLength": 256, "minLength": 1},
+                    "original": {"$ref": "#/components/schemas/SourceTypeReference"},
+                    "request_id": {"type": "string", "pattern": "^mr_[0-9a-f]{64}$", "nullable": True},
+                    "expected_state_version": {"type": "integer", "minimum": 1.0, "nullable": True},
+                    "expected_artifact_revision": {"type": "integer", "minimum": 0.0},
+                    "expected_profile_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "processing_kind": {
+                        "type": "string",
+                        "enum": ["image.interpretation"],
+                        "default": "image.interpretation",
+                    },
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "scope_id",
+                    "operation",
+                    "idempotency_key",
+                    "original",
+                    "expected_artifact_revision",
+                    "expected_profile_digest",
+                ],
+            },
+            "ImageTechnicalMetadata": {
+                "properties": {
+                    "schema": {
+                        "type": "string",
+                        "enum": ["powercontext.media.image.v1"],
+                        "default": "powercontext.media.image.v1",
+                    },
+                    "width": {"type": "integer", "minimum": 1.0},
+                    "height": {"type": "integer", "minimum": 1.0},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["width", "height"],
+            },
+            "MediaAsset": {
+                "properties": {
+                    "asset_id": {"type": "string", "pattern": "^ma_[0-9a-f]{64}$"},
+                    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "media_type": {"type": "string", "enum": ["image/png", "image/jpeg"]},
+                    "byte_size": {"type": "integer", "maximum": 8388608.0, "minimum": 1.0},
+                    "metadata": {"$ref": "#/components/schemas/ImageTechnicalMetadata"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["asset_id", "digest", "media_type", "byte_size", "metadata"],
+            },
+            "ScopedMediaSource": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "source": {"$ref": "#/components/schemas/SourceTypeReference"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "source"],
+            },
+            "MediaCaptureReceipt": {
+                "properties": {
+                    "status": {"type": "string", "enum": ["accepted"], "default": "accepted"},
+                    "original": {"$ref": "#/components/schemas/ScopedMediaSource"},
+                    "asset": {"$ref": "#/components/schemas/MediaAsset"},
+                    "sequence": {"type": "integer", "minimum": 1.0},
+                    "request_id": {"type": "string", "pattern": "^mr_[0-9a-f]{64}$"},
+                    "replayed": {"type": "boolean", "default": False},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["original", "asset", "sequence", "request_id"],
+            },
+            "MediaAttempt": {
+                "properties": {
+                    "attempt": {"type": "integer", "maximum": 5.0, "minimum": 1.0},
+                    "state": {"type": "string", "enum": ["started", "succeeded", "failed", "interrupted"]},
+                    "started_at": {"type": "string", "format": "date-time"},
+                    "finished_at": {"type": "string", "format": "date-time", "nullable": True},
+                    "provider_requests": {
+                        "type": "integer",
+                        "maximum": 1.0,
+                        "minimum": 0.0,
+                        "default": 0,
+                        "nullable": True,
+                    },
+                    "input_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "nullable": True},
+                    "input_tokens": {"type": "integer", "minimum": 0.0, "nullable": True},
+                    "output_tokens": {"type": "integer", "minimum": 0.0, "nullable": True},
+                    "latency_ms": {"type": "number", "minimum": 0.0, "nullable": True},
+                    "http_status": {"type": "integer", "maximum": 599.0, "minimum": 100.0, "nullable": True},
+                    "error_code": {"type": "string", "maxLength": 128, "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["attempt", "state", "started_at"],
+            },
+            "MediaProcessingRequest": {
+                "properties": {
+                    "schema": {
+                        "type": "string",
+                        "enum": ["powercontext.media.request.v1"],
+                        "default": "powercontext.media.request.v1",
+                    },
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "request_id": {"type": "string", "pattern": "^mr_[0-9a-f]{64}$"},
+                    "processing_kind": {
+                        "type": "string",
+                        "enum": ["image.interpretation"],
+                        "default": "image.interpretation",
+                    },
+                    "operation": {"type": "string", "enum": ["capture", "retry", "reparse"]},
+                    "original": {"$ref": "#/components/schemas/ScopedMediaSource"},
+                    "state": {"$ref": "#/components/schemas/MediaRequestState"},
+                    "state_version": {"type": "integer", "minimum": 1.0},
+                    "profile_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "attempt_count": {"type": "integer", "maximum": 5.0, "minimum": 0.0},
+                    "max_attempts": {"type": "integer", "maximum": 5.0, "minimum": 1.0},
+                    "attempts": {
+                        "items": {"$ref": "#/components/schemas/MediaAttempt"},
+                        "type": "array",
+                        "maxItems": 5,
+                        "default": [],
+                    },
+                    "result": {"allOf": [{"$ref": "#/components/schemas/ScopedMediaArtifact"}], "nullable": True},
+                    "publication": {"allOf": [{"$ref": "#/components/schemas/ScopedMediaSource"}], "nullable": True},
+                    "error_code": {"type": "string", "maxLength": 128, "nullable": True},
+                    "next_attempt_at": {"type": "string", "format": "date-time", "nullable": True},
+                    "created_at": {"type": "string", "format": "date-time"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "scope_id",
+                    "request_id",
+                    "operation",
+                    "original",
+                    "state",
+                    "state_version",
+                    "profile_digest",
+                    "attempt_count",
+                    "max_attempts",
+                    "created_at",
+                ],
+                "description": "Public progress never embeds image bytes, prompts, or provider responses.",
+            },
+            "MediaRequestState": {
+                "type": "string",
+                "enum": ["pending", "running", "retry_wait", "blocked", "succeeded", "failed", "superseded"],
+            },
+            "ScopedMediaArtifact": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "artifact": {"$ref": "#/components/schemas/ArtifactReference"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "artifact"],
+            },
+            "MediaRequestPage": {
+                "properties": {
+                    "items": {
+                        "items": {"$ref": "#/components/schemas/MediaProcessingRequest"},
+                        "type": "array",
+                        "maxItems": 100,
+                    },
+                    "next_cursor": {"type": "string", "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["items"],
+            },
+            "EvidenceAnchor": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1},
+                    "source": {"$ref": "#/components/schemas/SourceTypeReference"},
+                    "journal_position": {"type": "integer", "minimum": 1.0},
+                    "recorded_at": {"type": "string", "format": "date-time", "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "source", "journal_position"],
+                "description": "Repository-validated original position, never a model-supplied timestamp.",
+            },
+            "OutputMode": {"type": "string", "enum": ["prompted_json"]},
+            "PreprocessingVersion": {"type": "string", "enum": ["exif-strip-v1"]},
+            "PromptVersion": {"type": "string", "enum": ["image-evidence-v1"]},
+            "Readability": {"type": "string", "enum": ["readable", "partial", "unreadable"]},
+            "Uncertainty": {"type": "string", "maxLength": 512, "minLength": 1},
+            "ImageAnalysisContent": {
+                "properties": {
+                    "schema": {
+                        "type": "string",
+                        "enum": ["powercontext.image-analysis.v1"],
+                        "default": "powercontext.image-analysis.v1",
+                    },
+                    "original": {"$ref": "#/components/schemas/ScopedMediaSource"},
+                    "origin_anchor": {"$ref": "#/components/schemas/EvidenceAnchor"},
+                    "profile": {"$ref": "#/components/schemas/ExperimentalImageParseProfile"},
+                    "profile_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "input_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "context_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "context": {"$ref": "#/components/schemas/ExperimentalImageContext"},
+                    "output": {"$ref": "#/components/schemas/ExperimentalImageParseOutput"},
+                    "provider_revision": {"type": "string", "maxLength": 256, "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "original",
+                    "origin_anchor",
+                    "profile",
+                    "profile_digest",
+                    "input_digest",
+                    "context_digest",
+                    "context",
+                    "output",
+                ],
+            },
+            "MemoryStatementSupport": {
+                "properties": {
+                    "statement": {"type": "string", "maxLength": 8192, "minLength": 1},
+                    "applicability": {"type": "string", "maxLength": 1024, "nullable": True},
+                    "effective_date": {"type": "string", "format": "date", "nullable": True},
+                    "evidence": {
+                        "items": {"$ref": "#/components/schemas/StatementEvidence"},
+                        "type": "array",
+                        "maxItems": 16,
+                        "default": [],
+                    },
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["statement"],
+                "description": "Exact retained text and applicability, associated with its own evidence.",
+            },
+            "StatementEvidence": {
+                "properties": {
+                    "source": {"allOf": [{"$ref": "#/components/schemas/SourceTypeReference"}], "nullable": True},
+                    "artifact": {"allOf": [{"$ref": "#/components/schemas/ArtifactReference"}], "nullable": True},
+                    "via_artifact": {"allOf": [{"$ref": "#/components/schemas/ArtifactReference"}], "nullable": True},
+                    "anchor": {"allOf": [{"$ref": "#/components/schemas/EvidenceAnchor"}], "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "description": "An exact supporting input, with either a verified origin or unknown basis.",
+            },
+            "MemoryOrderingSupport": {
+                "properties": {
+                    "schema": {
+                        "type": "string",
+                        "enum": ["powercontext.memory-ordering.v1"],
+                        "default": "powercontext.memory-ordering.v1",
+                    },
+                    "content_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "statements": {
+                        "items": {"$ref": "#/components/schemas/MemoryStatementSupport"},
+                        "type": "array",
+                        "maxItems": 32,
+                        "minItems": 1,
+                    },
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["content_digest", "statements"],
+            },
+            "SourceMaterialization": {
+                "type": "string",
+                "enum": ["captured", "referenced"],
+                "description": "Describe where the value read for a Source comes from.",
+            },
+            "ImageOriginalPayload": {
+                "properties": {
+                    "name": {"type": "string"},
+                    "definition_version": {"type": "string", "default": "1"},
+                    "materialization": {"$ref": "#/components/schemas/SourceMaterialization"},
+                    "description": {"type": "string", "nullable": True},
+                    "asset": {"$ref": "#/components/schemas/MediaAsset"},
+                    "capture_key": {"type": "string", "maxLength": 256, "minLength": 1},
+                    "origin": {"$ref": "#/components/schemas/ExperimentalImageOrigin"},
+                    "context": {"$ref": "#/components/schemas/ExperimentalImageContext"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["name", "materialization", "asset", "capture_key", "origin", "context"],
+                "description": "One submitted occurrence; its bytes are retained by shared media storage.",
+            },
+            "ImageInterpretationPayload": {
+                "properties": {
+                    "name": {"type": "string"},
+                    "definition_version": {"type": "string", "default": "1"},
+                    "materialization": {"$ref": "#/components/schemas/SourceMaterialization"},
+                    "description": {"type": "string", "nullable": True},
+                    "result": {"$ref": "#/components/schemas/ScopedMediaArtifact"},
+                    "original": {"$ref": "#/components/schemas/ScopedMediaSource"},
+                    "origin_anchor": {"$ref": "#/components/schemas/EvidenceAnchor"},
+                    "projection_version": {"type": "string", "default": "1"},
+                    "readability": {"type": "string", "pattern": "^(readable|partial|unreadable)$"},
+                    "content": {"type": "string", "maxLength": 131072, "minLength": 1},
+                    "content_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": [
+                    "name",
+                    "materialization",
+                    "result",
+                    "original",
+                    "origin_anchor",
+                    "readability",
+                    "content",
+                    "content_digest",
+                ],
+                "description": "A deterministic snapshot of one authoritative image-analysis revision.",
+            },
+            "GetMediaAssetRequest": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "asset_id": {"type": "string", "pattern": "^ma_[0-9a-f]{64}$"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "asset_id"],
+            },
+            "GetMediaAssetResponse": {
+                "properties": {
+                    "asset": {"$ref": "#/components/schemas/MediaAsset"},
+                    "bytes_base64": {"type": "string", "maxLength": 11184812},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["asset", "bytes_base64"],
+            },
+            "GetMediaRequestRequest": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "request_id": {"type": "string", "pattern": "^mr_[0-9a-f]{64}$"},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id", "request_id"],
+            },
+            "ListMediaRequestsRequest": {
+                "properties": {
+                    "scope_id": {"type": "string", "maxLength": 256, "minLength": 1, "pattern": ".*\\S.*"},
+                    "processing_kind": {
+                        "type": "string",
+                        "enum": ["image.interpretation"],
+                        "default": "image.interpretation",
+                    },
+                    "states": {
+                        "items": {"$ref": "#/components/schemas/MediaRequestState"},
+                        "type": "array",
+                        "maxItems": 7,
+                        "default": [],
+                    },
+                    "limit": {"type": "integer", "maximum": 100.0, "minimum": 1.0, "default": 50},
+                    "cursor": {"type": "string", "maxLength": 2048, "nullable": True},
+                },
+                "additionalProperties": False,
+                "type": "object",
+                "required": ["scope_id"],
+            },
         },
         "responses": {
             "ClientUpgradeRequired": {
@@ -12703,5 +13488,32 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
         "access.principal": {"major": 1, "minor": 0},
         "scope.selection": {"major": 1, "minor": 0},
         "memory.explicit": {"major": 1, "minor": 0},
+    },
+    "x-powercontext-media": {
+        "implemented_operations": [
+            "capture_image",
+            "get_media_asset",
+            "get_media_request",
+            "list_media_requests",
+            "request_image_analysis",
+        ],
+        "source_definitions": {
+            "image.original": {
+                "version": "1",
+                "payload_schema": "#/components/schemas/ImageOriginalPayload",
+                "projections": [],
+            },
+            "image.interpretation": {
+                "version": "1",
+                "payload_schema": "#/components/schemas/ImageInterpretationPayload",
+                "projections": [{"name": "powercontext.text-evidence", "version": "1"}],
+            },
+        },
+        "contract_version": "1",
+        "active": True,
+        "rfc": "https://github.com/oceanbase/powercontext/pull/1972",
+        "processing_kinds": ["image.interpretation"],
+        "storage": "sqlite-blob",
+        "legacy_import": "reject-before-writes",
     },
 }

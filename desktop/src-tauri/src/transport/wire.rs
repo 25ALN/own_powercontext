@@ -390,6 +390,8 @@ pub enum ArtifactReadFamily {
     Prompt,
     #[serde(rename = "topic-memory")]
     TopicMemory,
+    #[serde(rename = "image-analysis")]
+    ImageAnalysis,
 }
 
 impl std::fmt::Display for ArtifactReadFamily {
@@ -403,6 +405,7 @@ impl std::fmt::Display for ArtifactReadFamily {
             Self::Profile => write!(f, "profile"),
             Self::Prompt => write!(f, "prompt"),
             Self::TopicMemory => write!(f, "topic-memory"),
+            Self::ImageAnalysis => write!(f, "image-analysis"),
         }
     }
 }
@@ -648,6 +651,16 @@ impl std::fmt::Display for AtomicMemoryState {
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct Capabilities {
+    /// Image binding configuration and storage admission readiness; this does not call Vision.
+    #[ts(optional)]
+    #[ts(type = "ImageProcessingCapability | null")]
+    #[serde(
+        rename = "media",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub media: Option<Option<ImageProcessingCapability>>,
     #[ts(optional)]
     #[serde(rename = "prompts", skip_serializing_if = "Option::is_none")]
     pub prompts: Option<std::collections::HashMap<String, PromptCapability>>,
@@ -713,6 +726,7 @@ impl Capabilities {
         context_versions: Vec<PreparedContextSchema>,
     ) -> Capabilities {
         Capabilities {
+            media: None,
             prompts: None,
             artifact_dreaming: None,
             artifact_dreaming_operations: None,
@@ -991,6 +1005,46 @@ impl HealthResponse {
     #[allow(clippy::too_many_arguments)]
     pub fn new(status: String) -> HealthResponse {
         HealthResponse { status }
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ImageProcessingCapability {
+    #[serde(rename = "enabled")]
+    pub enabled: bool,
+    #[serde(rename = "available")]
+    pub available: bool,
+    #[serde(rename = "processing_enabled")]
+    pub processing_enabled: bool,
+    #[serde(rename = "vision_configured")]
+    pub vision_configured: bool,
+    #[ts(type = "string | null")]
+    #[serde(rename = "profile_digest", deserialize_with = "Option::deserialize")]
+    pub profile_digest: Option<String>,
+    #[ts(type = "string | null")]
+    #[serde(rename = "error_code", deserialize_with = "Option::deserialize")]
+    pub error_code: Option<String>,
+}
+
+impl ImageProcessingCapability {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        enabled: bool,
+        available: bool,
+        processing_enabled: bool,
+        vision_configured: bool,
+        profile_digest: Option<String>,
+        error_code: Option<String>,
+    ) -> ImageProcessingCapability {
+        ImageProcessingCapability {
+            enabled,
+            available,
+            processing_enabled,
+            vision_configured,
+            profile_digest,
+            error_code,
+        }
     }
 }
 
@@ -1470,6 +1524,7 @@ pub fn declarations(config: &ts_rs::Config) -> Vec<String> {
         <ExtractionObservationStatus as ts_rs::TS>::decl(config),
         <ExtractionStatus as ts_rs::TS>::decl(config),
         <HealthResponse as ts_rs::TS>::decl(config),
+        <ImageProcessingCapability as ts_rs::TS>::decl(config),
         <Location as ts_rs::TS>::decl(config),
         <MatchedBy as ts_rs::TS>::decl(config),
         <MemoryMutationResponse as ts_rs::TS>::decl(config),

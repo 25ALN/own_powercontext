@@ -38,7 +38,7 @@ from powercontext.service.model import ServiceError
 
 BackupPolicy = Literal["auto", "manual", "skip"]
 Bundle = Annotated[
-    Literal["artifacts", "topic-memory-recovery"],
+    Literal["artifacts", "topic-memory-recovery", "media"],
     typer.Option(help="Select the registered domain bundle; readiness covers only that bundle."),
 ]
 EnvFile = Annotated[Path | None, typer.Option(help="Read the same environment file as the deployed Server.")]
@@ -214,7 +214,7 @@ def _inspect(
     evidence_dir: Path | None,
     lock_coordination: Literal["single-host"] | None,
     verify: bool,
-    bundle: Literal["artifacts", "topic-memory-recovery"] = "artifacts",
+    bundle: Literal["artifacts", "topic-memory-recovery", "media"] = "artifacts",
 ) -> None:
     with _operator_errors(), server_settings_context(env_file=_environment_file(env_file)) as settings:
         runner = deployment_runner(

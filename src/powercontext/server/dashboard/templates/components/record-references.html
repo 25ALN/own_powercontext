@@ -22,7 +22,14 @@ limitations under the License.
   </style>
   {% if caller is defined %}{{ caller() }}{% endif %}
   {% if record.artifact_id %}<code class="d-block text-reset bg-transparent p-0 mb-2">{{ family }}/{{ record.artifact_id }}{% if record.revision %}@{{ record.revision }}{% endif %}</code>{% endif %}
-  {% for source in record.sources if source.source_id %}<code class="d-block text-reset bg-transparent p-0 mb-2">{{ source.source_type }}/{{ source.source_id }}</code>{% endfor %}
+  {% set material = namespace(number=0) %}
+  {% for source in record.sources if source.source_id %}
+    {% if caller is not defined and source.source_type in ['content', 'image.original', 'image.interpretation', 'experimental.image.analysis'] %}
+    {% set material.number = material.number + 1 %}
+    {% set url = link('evidence/' ~ source.source_id, source_type=source.source_type, origin=page) %}
+    <a class="d-block evidence-link mb-2" href="{{ url }}" hx-get="{{ url }}" hx-target="#evidence-content" hx-select="unset" hx-swap="innerHTML" hx-push-url="false" hx-indicator="#evidence-loading" data-bs-toggle="modal" data-bs-target="#evidence" data-evidence>{{ t.read_material }} {{ material.number }} <code class="text-reset bg-transparent p-0">{{ source.source_type }}/{{ source.source_id }}</code></a>
+    {% else %}<code class="d-block text-reset bg-transparent p-0 mb-2">{{ source.source_type }}/{{ source.source_id }}</code>{% endif %}
+  {% endfor %}
   {% set pages = {'atomic-memory': 'notes', 'experience': 'experience', 'skill': 'skill', 'handoff': 'handoff-detail'} %}
   {% for artifact in record.artifacts if artifact.artifact_id %}
     {% if artifact.family in pages and artifact.revision %}

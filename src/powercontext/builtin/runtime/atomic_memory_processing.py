@@ -37,13 +37,18 @@ from powercontext.builtin.artifacts.atomic_memory.extraction import (
     project_atomic_memory_evidence,
     require_atomic_memory_pipeline,
 )
-from powercontext.builtin.artifacts.atomic_memory.models import AtomicMemoryContent
+from powercontext.builtin.artifacts.atomic_memory.models import AtomicMemoryContent, AtomicMemoryDraft
+from powercontext.builtin.artifacts.atomic_memory.ordering import (
+    resolve_memory_ordering,
+    validate_memory_ordering,
+)
 from powercontext.builtin.artifacts.atomic_memory.reconciliation import (
     ATOMIC_MEMORY_RECONCILIATION_INSTRUCTIONS,
     AtomicMemoryArtifactEvidence,
     AtomicMemoryReconciliationOutput,
     AtomicMemoryWindowWorkset,
     AtomicMemoryWorkingItem,
+    candidate_ordering,
 )
 from powercontext.builtin.artifacts.memory.canonical import canonical_embedding
 from powercontext.builtin.artifacts.memory.protocols import (
@@ -54,6 +59,7 @@ from powercontext.builtin.artifacts.memory.protocols import (
 from powercontext.builtin.artifacts.prompt.errors import PromptError
 from powercontext.builtin.artifacts.prompt.service import PromptService, current_prompt
 from powercontext.builtin.decision_observations import DecisionObservation
+from powercontext.builtin.images.models import ImageAnalysisSource, ImageInterpretationSource
 from powercontext.builtin.inference import (
     InferenceTimeoutError,
     InferenceUnavailableError,
@@ -86,6 +92,7 @@ from powercontext.builtin.runtime.protocols import RuntimeTracing
 from powercontext.builtin.source_eligibility import is_generation_eligible
 from powercontext.builtin.triggers import SOURCE_WINDOW_TRIGGER_NAME, SourceHighWatermark, SourceWindowTrigger
 from powercontext.errors import RevisionConflictError
+from powercontext.sources.evidence import EvidenceAnchor
 
 if TYPE_CHECKING:
     from powercontext.builtin.runtime.config import RuntimeConfig
@@ -453,10 +460,10 @@ class AtomicMemorySourceWindowProcessor:
         artifacts: dict[tuple[str, str, int], ArtifactRef] = {}
         if pipeline is None:
             return workset, ()
-        evidence = tuple([
-            await project_atomic_memory_evidence(item, self.sources, evidence_id=f"source:{item.journal_position}")
-            for item in eligible
-        ])
+        async with self._read_transaction(context) as connection:
+            evidence = tuple([
+                await self._project_evidence(connection, scope_id, item, context, artifacts) for item in eligible
+            ])
         extraction_input = AtomicMemoryExtractionInput(evidence=evidence)
         self._require_budget(pipeline, extraction_input, "atomic_memory.extract")
         extraction_prompt = current_prompt("atomic_memory.extract")
@@ -501,9 +508,24 @@ class AtomicMemorySourceWindowProcessor:
             key = workset.add(
                 AtomicMemoryWorkingItem(
                     key=f"candidate:{ordinal}",
-                    content=AtomicMemoryContent(kind=candidate.kind, text=candidate.text),
+                    content=AtomicMemoryContent(
+                        kind=candidate.kind,
+                        text=candidate.text,
+                        ordering=candidate_ordering(candidate, selected),
+                    ),
                     evidence=selected,
                     sources=tuple(item.source_ref for item in selected),
+                    artifacts=tuple(
+                        {
+                            (
+                                item.via_artifact.family,
+                                item.via_artifact.artifact_id,
+                                item.via_artifact.revision,
+                            ): item.via_artifact
+                            for item in selected
+                            if item.via_artifact is not None
+                        }.values()
+                    ),
                     changed=True,
                 )
             )
@@ -578,11 +600,21 @@ class AtomicMemorySourceWindowProcessor:
                 )
             except AccessDeniedError:
                 continue
-            content = AtomicMemoryContent(kind=hit.kind, text=hit.text)
+            content = self.application.artifacts.decode_content(by_id[hit.artifact_ref.artifact_id])
+            if not isinstance(content, AtomicMemoryContent):
+                _conflict("Related Memory has an unsupported content contract")
+            content = await self._comparison_content(connection, scope_id, read.ref, content, context)
+            ordering = content.ordering
+            if ordering is None:
+                _conflict("Related Memory ordering was not resolved")
+            evidence_id = f"artifact:{read.ref.artifact_id}@{read.ref.revision}"
             supported = AtomicMemoryArtifactEvidence(
-                evidence_id=f"artifact:{read.ref.artifact_id}@{read.ref.revision}",
+                evidence_id=evidence_id,
                 artifact_ref=read.ref,
                 content=content,
+                statement_evidence_ids=tuple(
+                    f"{evidence_id}/statement/{index}" for index in range(len(ordering.statements))
+                ),
             )
             artifacts[(read.ref.family, read.ref.artifact_id, read.ref.revision)] = read.ref
             recalled.append(
@@ -597,6 +629,62 @@ class AtomicMemorySourceWindowProcessor:
                 )
             )
         return recalled
+
+    async def _comparison_content(self, connection, scope_id, ref, content, context):
+        from powercontext.builtin.persistence.errors import InvalidStoredPayloadError
+        from powercontext.server.authz import AccessDeniedError
+
+        artifact = await self.application.artifacts.get(connection, scope_id, ref)
+        if content.ordering is not None:
+            draft = AtomicMemoryDraft(
+                content=content, sources=artifact.lineage.sources, artifacts=artifact.lineage.artifacts
+            )
+            try:
+                await validate_memory_ordering(connection, scope_id, draft, self.sources, self.application.artifacts)
+            except (ValueError, RepositoryNotFoundError) as error:
+                raise InvalidStoredPayloadError("artifact", ref.artifact_id, "invalid ordering support") from error
+            return content
+
+        async def authorize_source(source):
+            try:
+                await self.application.security.authorize_sources(connection, scope_id, context, (source,))
+            except AccessDeniedError:
+                return False
+            return True
+
+        ordering = await resolve_memory_ordering(
+            connection, scope_id, artifact, self.sources, authorize_source=authorize_source
+        )
+        return content.model_copy(update={"ordering": ordering})
+
+    async def _project_evidence(self, connection, scope_id, stored, context, artifacts):
+        anchor: EvidenceAnchor | None = EvidenceAnchor(
+            scope_id=scope_id, source=stored.ref, journal_position=stored.journal_position
+        )
+        via = None
+        derived = isinstance(stored.value, ImageInterpretationSource | ImageAnalysisSource)
+        if isinstance(stored.value, ImageAnalysisSource):
+            anchor = None
+        if isinstance(stored.value, ImageInterpretationSource):
+            from powercontext.builtin.images.processing import validate_interpretation
+            from powercontext.builtin.media.errors import MediaError
+
+            value = stored.value
+            if value.original.scope_id != scope_id:
+                raise MediaError(422, "image_evidence_scope_mismatch")
+            await self.application.security.authorize_sources(connection, scope_id, context, (value.original.source,))
+            await self._authorize_artifact(connection, scope_id, context, value.result.artifact)
+            await validate_interpretation(connection, stored, self.sources, self.application.artifacts)
+            anchor, via = value.origin_anchor, value.result.artifact
+            artifacts[(via.family, via.artifact_id, via.revision)] = via
+        return await project_atomic_memory_evidence(
+            stored,
+            self.sources,
+            evidence_id=f"source:{stored.journal_position}",
+            via_artifact=via,
+            origin_anchor=anchor,
+            derived=derived,
+        )
 
     async def _recall_related_items(self, scope_id, query, context, workset, artifacts, *, local_policy=False):
         application = self.application

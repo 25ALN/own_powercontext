@@ -189,6 +189,13 @@ def setup_agents(
     allow_insecure_http: HttpOption = None,
     json_output: JsonOption = False,
     capture_prompts: CaptureOption = None,
+    capture_images: Annotated[
+        bool | None,
+        typer.Option(
+            "--capture-images/--no-capture-images",
+            help="Codex only: authorize images for this workspace; otherwise use the setup .env choice.",
+        ),
+    ] = None,
     scope_id: Annotated[str | None, typer.Option(help="Existing Scope ID for Kimi Code.")] = None,
     workspace_scope: Annotated[
         bool,
@@ -220,6 +227,7 @@ def setup_agents(
     selected = select_hosts(agents, json_output=json_output)
     options = {
         "capture_prompts": capture_prompts,
+        "capture_images": capture_images,
         "scope_id": scope_id,
         "boundary_flush": boundary_flush,
         "workspace_scope": workspace_scope or None,
@@ -1271,7 +1279,10 @@ def _required_string(value: dict[str, Any], name: str) -> str:
 __all__ = ["Diagnostic", "DiagnosticStatus", "SetupError", "doctor_app", "run_diagnostics", "setup_app"]
 
 
+@dataclass
 class CodexInstaller:
+    capture_images: bool | None = None
+
     def install(self, source):
         if _codex_path_executable() is None:
             raise SetupError("Codex CLI is not installed or is not on PATH.")  # noqa: TRY003
@@ -1316,7 +1327,15 @@ class CodexInstaller:
         value = read_stored_authorization(credential_path("codex"), server_url=connection.server_url).authorization
         if value is not None:
             configure_codex_desktop_authorization(value)
-        return {"authorization_state": state}
+        from powercontext.cli.codex_images import configure_images, plugin_root
+
+        image_capture = configure_images(
+            plugin_root(marketplace, _required_string(record, "version")), self.capture_images
+        )
+        report = {"authorization_state": state}
+        if image_capture is not None:
+            report["image_capture"] = image_capture
+        return report
 
     def verify(self) -> dict[str, Diagnostic]:
         """Collect plugin and native MCP diagnostics for the optional Codex integration."""
@@ -1375,6 +1394,10 @@ class CodexInstaller:
                 detail="not checked because the PowerContext plugin is unavailable",
             )
             return diagnostics
+
+        from powercontext.cli.codex_images import image_diagnostic
+
+        diagnostics["images"] = image_diagnostic(plugin)
 
         try:
             servers = _run_codex_mcp_list()

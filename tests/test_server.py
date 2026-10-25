@@ -61,7 +61,7 @@ from powercontext.server.settings import (
 )
 from powercontext.sources import Source
 
-_ACCESS_FAMILIES = "atomic-memory:enabled,experience:enabled,handoff:enabled,memory:enabled,profile:enabled,prompt:enabled,skill:enabled"
+_ACCESS_FAMILIES = "atomic-memory:enabled,experience:enabled,handoff:enabled,image-analysis:enabled,memory:enabled,profile:enabled,prompt:enabled,skill:enabled"
 
 
 class _StartupOnlyAccessControl:

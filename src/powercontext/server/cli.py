@@ -142,6 +142,7 @@ async def _processing_maintenance(
         inference=settings.inference,
         handoff_report=settings.handoff_report,
         external_skills=settings.external_skills,
+        images=settings.images,
     )
     manifest = canonical_processing_manifest(config)
     database = settings.database

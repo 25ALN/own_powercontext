@@ -94,6 +94,13 @@ from powercontext.builtin.evidence.models import content_digest
 from powercontext.builtin.evidence.resolver import AuthorizationContext
 from powercontext.builtin.handoff_report.adapters import RuntimeHandoffReadAdapter
 from powercontext.builtin.handoff_report.application import HandoffReportApplication
+from powercontext.builtin.images.application import ImageApplication as ImageService
+from powercontext.builtin.images.processing import (
+    ImageProcessingPendingProvider,
+    ImageWorkerSpec,
+    image_processing_block,
+    run_image_worker,
+)
 from powercontext.builtin.inference import EmbeddingModel, TokenEstimator, character_token_estimator
 from powercontext.builtin.inference.usage import (
     UsageReportingEmbeddingModel,
@@ -109,6 +116,7 @@ from powercontext.builtin.persistence.atomic_memory_readiness import (
 from powercontext.builtin.persistence.bootstrap_receipts import BootstrapReceiptRepository
 from powercontext.builtin.persistence.experience_index import ensure_artifact_head_searchable_text
 from powercontext.builtin.persistence.lexical_projection import refresh_lexical_projections
+from powercontext.builtin.persistence.media_tables import MEDIA_TABLES
 from powercontext.builtin.persistence.oceanbase.atomic_memory_index import OceanBaseAtomicMemoryIndex
 from powercontext.builtin.persistence.oceanbase.experience_index import OceanBaseExperienceFTSIndex
 from powercontext.builtin.persistence.oceanbase.profile import OceanBaseConfig, OceanBaseProfile
@@ -768,8 +776,18 @@ async def open_builtin_runtime(
             AtomicArtifactSearcher(application=contexts.atomic_memory),
             embedding_purpose=ModelUsagePurpose.MEMORY_RECALL,
         )
+        images = await ImageService.open(
+            contexts.database,
+            contexts.repositories.sources,
+            contexts.repositories.artifacts,
+            config.images,
+            config.inference,
+            registry=configured_source_registry,
+        )
+        images.processing_enabled = any(binding.artifact_family == "image-analysis" for binding in processing_bindings)
         runtime = await resources.enter_async_context(
             BuiltinRuntime(
+                image_service=images,
                 code_service=await resources.enter_async_context(open_code_service(config.code, config.database)),
                 provider=contexts,
                 primary_database=contexts.database,
@@ -943,7 +961,11 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
     configured = list(bindings)
     _validate_processing_registrations(configured)
     capabilities = processing_capabilities(config)
-    canonical = {**FAMILY_BINDINGS, "topic-memory": TOPIC_MEMORY_SOURCE_WINDOW_BINDING}
+    canonical = {
+        **FAMILY_BINDINGS,
+        "topic-memory": TOPIC_MEMORY_SOURCE_WINDOW_BINDING,
+        "image-analysis": "image-interpretation",
+    }
     registered = {binding.artifact_family for binding in configured}
     declared = set(capabilities)
     if declared - (set(canonical) | registered):
@@ -956,6 +978,7 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
         "skill": None,
         "handoff": None,
         "prompt": None,
+        "image-analysis": 1 if "image-analysis" in capabilities else None,
     }
     for family, schedule in automatic.items():
         if schedule is not None and family not in declared | registered:
@@ -979,7 +1002,7 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
     for family in capabilities:
         if family in registered:
             continue
-        if config.inference.generation_model is None:
+        if config.inference.generation_model is None and family != "image-analysis":
             raise BuiltinConfigurationError("artifact-processing-families")
         if (
             injected_embedding_model is not None
@@ -991,7 +1014,9 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
         if isinstance(config.database, SQLiteConfig) and not config.database.is_persistent:
             raise BuiltinConfigurationError("topic-memory-database")
         prefix = family.replace("-", "_")
-        if family == "topic-memory":
+        if family == "image-analysis":
+            entrypoint = partial(run_image_worker, ImageWorkerSpec(config=config, worker_security=worker_security))
+        elif family == "topic-memory":
             validate_topic_memory_provider_settings(config.inference)
             try:
                 budget = topic_memory_stage_budget(
@@ -1019,8 +1044,12 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
                     entrypoint_wrapper=worker_entrypoint_wrapper,
                     collect_model_usage=worker_model_usage_observer is not None,
                 ),
-                max_workers=getattr(config.runtime, f"{prefix}_max_workers"),
-                worker_timeout_seconds=getattr(config.runtime, f"{prefix}_worker_timeout_seconds"),
+                max_workers=config.images.worker_concurrency
+                if family == "image-analysis"
+                else getattr(config.runtime, f"{prefix}_max_workers"),
+                worker_timeout_seconds=360
+                if family == "image-analysis"
+                else getattr(config.runtime, f"{prefix}_worker_timeout_seconds"),
                 automatic_processing_interval=None if interval is None else timedelta(seconds=float(interval)),
                 cron=config.runtime.profile_cron
                 if family == "profile" and config.runtime.profile_schedule_enabled
@@ -1028,10 +1057,14 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
                 timezone=config.runtime.profile_timezone if family == "profile" else "Asia/Shanghai",
                 pending_provider=None
                 if family in {"skill", "handoff", "prompt"}
+                else ImageProcessingPendingProvider(contexts.database)
+                if family == "image-analysis"
                 else SourceProcessingPendingProvider(contexts.database, binding, family),
                 automatic_scope_filter=enabled_profile_scopes if family == "profile" else None,
                 work_block=partial(topic_memory_processing_block, dream_enabled=config.runtime.dream_enabled)
                 if family == "topic-memory"
+                else partial(image_processing_block, enabled=config.images.enabled)
+                if family == "image-analysis"
                 else None,
                 worker_model_usage_observer=worker_model_usage_observer,
                 work_failure=record_topic_memory_work_failure if family == "topic-memory" else None,
@@ -1146,7 +1179,10 @@ async def open_builtin_contexts(
         atomic_index = SQLiteAtomicMemoryIndex(None if embedding_model is None else embedding_model.profile)
         async with SQLiteProfile.open(
             database,
-            tables=BUILTIN_TABLES + topic_index.tables + atomic_index.tables,
+            tables=BUILTIN_TABLES
+            + topic_index.tables
+            + atomic_index.tables
+            + (MEDIA_TABLES if config.images.enabled else ()),
             load_vector_extension=embedding_model is not None,
         ) as profile:
             async with profile.database.transaction() as connection:
@@ -1888,6 +1924,25 @@ async def _open_pydantic_ai_model(
             ),
         )
     )
+    # MiniCPM's chat template accepts one leading system message. Prompted
+    # structured output adds schema instructions; merge them at the provider
+    # boundary without dropping either the task instructions or the schema.
+    if (
+        model_name.startswith("openai-chat:MiniCPM")
+        and base_url is not None
+        and urlsplit(str(base_url)).hostname == "api.modelbest.cn"
+    ):
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.profiles.openai import OpenAIModelProfile
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+        if isinstance(inferred_model, OpenAIChatModel):
+            profile = cast(
+                OpenAIModelProfile, {**inferred_model.profile, "openai_chat_supports_multiple_system_messages": False}
+            )
+            inferred_model = OpenAIChatModel(
+                inferred_model.model_name, provider=OpenAIProvider(openai_client=inferred_model.client), profile=profile
+            )
     provider_model = await resources.enter_async_context(inferred_model)
     model = provider_model
     if streaming == "auto" and model_name.split(":", 1)[0] in _STREAMING_AGGREGATED_PROVIDERS:

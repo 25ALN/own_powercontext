@@ -35,6 +35,24 @@
             "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" python \"${PLUGIN_ROOT}/hooks/recall.py\"",
             "timeout": 10,
             "statusMessage": "Syncing PowerContext"
+          },
+          {
+            "type": "command",
+            "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" python \"${PLUGIN_ROOT}/hooks/image_capture.py\"",
+            "timeout": 10,
+            "statusMessage": "Saving enabled PowerContext image evidence"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" python \"${PLUGIN_ROOT}/hooks/image_capture.py\"",
+            "timeout": 3,
+            "statusMessage": "Retaining enabled PowerContext image evidence"
           }
         ]
       }
@@ -47,6 +65,12 @@
             "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" python \"${PLUGIN_ROOT}/hooks/token_savings.py\"",
             "timeout": 10,
             "statusMessage": "Loading PowerContext token savings"
+          },
+          {
+            "type": "command",
+            "command": "uv run --frozen --quiet --project \"${PLUGIN_ROOT}\" python \"${PLUGIN_ROOT}/hooks/image_capture.py\"",
+            "timeout": 10,
+            "statusMessage": "Saving enabled PowerContext image evidence"
           }
         ]
       }

@@ -30,7 +30,8 @@ from shutil import which
 from time import monotonic
 from typing import Any, Protocol
 from urllib.error import HTTPError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from typing_extensions import override
 
@@ -38,7 +39,7 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_PLUGIN_ROOT))
 
 from plugin_version import PLUGIN_VERSION  # noqa: E402
-from settings import CodexPluginSettings  # noqa: E402
+from settings import CodexPluginSettings, _is_loopback_host  # noqa: E402
 
 _MAX_RESPONSE_BYTES = 1_048_576
 _REQUEST_HEADERS = {
@@ -95,6 +96,7 @@ class _RejectRedirects(HTTPRedirectHandler):
 
 
 _URL_OPENER = build_opener(_RejectRedirects)
+_LOCAL_OPENER = build_opener(ProxyHandler({}), _RejectRedirects)
 
 
 def open_bounded(request: Request, *, timeout: float) -> Any:
@@ -109,7 +111,8 @@ def open_bounded(request: Request, *, timeout: float) -> Any:
 
     def _open() -> None:
         try:
-            outcome.append(_URL_OPENER.open(request, timeout=timeout))
+            opener = _LOCAL_OPENER if _is_loopback_host(urlsplit(request.full_url).hostname or "") else _URL_OPENER
+            outcome.append(opener.open(request, timeout=timeout))
         except BaseException as error:
             outcome.append(error)
 
@@ -131,6 +134,7 @@ def resolve_scope_id(
     settings: CodexPluginSettings,
     deadline: float,
     persist_session: bool = False,
+    allow_default: bool = True,
 ) -> str:
     """Resolve explicit, session, workspace, then default binding in that order."""
 
@@ -140,6 +144,7 @@ def resolve_scope_id(
         {
             "explicit_scope_id": settings.scope_id,
             "binding_keys": keys,
+            **({"allow_default": False} if not allow_default else {}),
         },
         settings=settings,
         deadline=deadline,

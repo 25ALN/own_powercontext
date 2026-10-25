@@ -632,3 +632,13 @@ only through the environment so it does not appear in command-line arguments.
 ## Agent integrations
 
 For installation, connection, authentication, and environment variables, use the [guide for your integration](../integrations/index.md).
+
+## Optional image recognition
+
+The ordinary wizard offers an image step, off by default. A dedicated Vision connection stores its model, endpoint, deployment label and headers in the same .env. Explicit reuse sets `POWERCONTEXT_SERVER_INFERENCE_VISION_USE_GENERATION=true` and uses generation model, base URL and headers. Reuse currently requires an `openai-chat:` model, an explicit base URL and actual image-input capability.
+
+`POWERCONTEXT_SERVER_IMAGES_ENABLED` controls Server intake; `POWERCONTEXT_CODEX_CAPTURE_IMAGES` selects workspace consent during Codex setup. Both default to false. Install the optional `images` extra (`powercontext[server,images]`) for PNG/JPEG decoding. Original bytes are BLOBs in the same durable SQLite database as Sources, requests and Artifact revisions; no asset directory is needed. Model changes do not rewrite historical evidence or accepted request profiles. Existing databases require an explicit `server db-migrate --bundle media` plan/apply maintenance workflow; processing ownership changes use the existing processing migration. Legacy seven-table/file deployments are rejected before media migration until an explicit converter is qualified. Complete SQLite backups include media; logical archive v1 rejects scopes containing media before writing an incomplete backup.
+
+A dedicated connection uses the `POWERCONTEXT_SERVER_INFERENCE_VISION_` prefix with MODEL, BASE_URL, DEPLOYMENT_ID and HEADERS. Keep credentials local. Reuse does not require a second Vision credential. `powercontext image probe --env-file .env` makes one billable synthetic-image request and saves no Source.
+
+Parsing and Memory generation are separate results. Ordinary generation, embedding and existing processing policy still control extraction and recall; the Codex chat model is a separate connection.

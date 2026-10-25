@@ -55,7 +55,7 @@ export type AccessResourceType = "server" | "scope" | "artifact";
 export type AccessRole = "handoff.viewer" | "handoff.receiver" | "artifact.viewer" | "prompt.user" | "artifact.owner" | "scope.viewer" | "scope.contributor" | "scope.reviewer" | "scope.delegator" | "scope.admin" | "server.observer" | "server.admin";
 export type ArtifactDreamingOperationCapability = { operation: DreamOperation, output_kind: OutputKind, effect: Effect, };
 export type ArtifactFamilyAccessCapability = { family: string, enabled: boolean, share_unit: ShareUnit, actions: Array<AccessAction>, grantable_roles: Array<AccessRole>, };
-export type ArtifactReadFamily = "memory" | "atomic-memory" | "experience" | "skill" | "handoff" | "profile" | "prompt" | "topic-memory";
+export type ArtifactReadFamily = "memory" | "atomic-memory" | "experience" | "skill" | "handoff" | "profile" | "prompt" | "topic-memory" | "image-analysis";
 export type ArtifactReference = { family: string, artifact_id: string, revision: number, };
 export type ArtifactRevision = { scope_id: string, family: ArtifactReadFamily, artifact_id: string, revision: number, content: Record<string, unknown>, sources: Array<SourceTypeReference>, artifacts: Array<ArtifactReference>, content_digest: string,
 /**
@@ -83,7 +83,11 @@ score: number, matched_by: Array<MatchedBy>, };
 export type AtomicMemorySearchMode = "text" | "vector" | "hybrid";
 export type AtomicMemoryState = "active" | "forgotten" | "merged" | "retired";
 export type BuiltinProfile = "coding" | "conversation";
-export type Capabilities = { prompts?: { [key in string]: PromptCapability },
+export type Capabilities = {
+/**
+ * Image binding configuration and storage admission readiness; this does not call Vision.
+ */
+media?: ImageProcessingCapability | null, prompts?: { [key in string]: PromptCapability },
 /**
  * Whether asynchronous Artifact Dream execution is configured.
  */
@@ -165,6 +169,7 @@ export type ExtractionStatus = {
  */
 configuration: Configuration, background: ExtractionBackground, observation: ExtractionObservation, };
 export type HealthResponse = { status: string, };
+export type ImageProcessingCapability = { enabled: boolean, available: boolean, processing_enabled: boolean, vision_configured: boolean, profile_digest: string | null, error_code: string | null, };
 export type Location = "local" | "external" | "none";
 export type MatchedBy = "text" | "vector";
 export type MemoryMutationResponse = { changed: boolean, records: Array<AtomicMemoryRecord>, };

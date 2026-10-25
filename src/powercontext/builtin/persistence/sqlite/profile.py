@@ -115,6 +115,11 @@ class SQLiteProfile:
         profile = cls(database=database, tables=tables)
         try:
             await assert_dream_schema_ready(engine)
+            if any(table.name == "pc_media_assets" for table in tables):
+                from powercontext.builtin.persistence.media_schema import prepare_media_storage
+
+                if not await prepare_media_storage(engine):
+                    tables = tuple(table for table in tables if not table.name.startswith("pc_media_"))
             if tables:
                 await prepare_topic_memory_recovery_schema(
                     engine, initialize=any(table.name == BUDGET for table in tables)

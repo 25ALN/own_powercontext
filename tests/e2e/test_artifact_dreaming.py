@@ -1169,7 +1169,7 @@ def test_wizard_skill_selection_accepts_dream_derivation(
         )
         answers = "edit\ncapabilities\n" + choices + "done\ny\n"
     else:
-        answers = "local\n" + choices + "n\n\nbailian\n\n\nexample-test-key\nnone\ny\ny\n"
+        answers = "local\n" + choices + "n\n\nbailian\n\n\nexample-test-key\nnone\ny\nn\ny\n"
     result = CliRunner().invoke(
         config_app,
         ["init", "--language", "en", "--output", str(output)],

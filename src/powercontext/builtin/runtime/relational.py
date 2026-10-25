@@ -57,6 +57,7 @@ from powercontext.builtin.artifacts.handoff import (
     HandoffSourceCitation,
 )
 from powercontext.builtin.artifacts.handoff.generation_metadata import HandoffGenerationReceipts
+from powercontext.builtin.artifacts.image_analysis import ImageAnalysis
 from powercontext.builtin.artifacts.memory import (
     CandidatePipeline,
     EmbeddingProfile,
@@ -274,7 +275,7 @@ def _artifact_identity(ref: ArtifactRef) -> tuple[str, str, int]:
     return ref.family, ref.artifact_id, ref.revision
 
 
-BUILTIN_ARTIFACT_TYPES = (Handoff, AtomicMemory, Experience, Skill, Profile, Prompt, TopicMemory)
+BUILTIN_ARTIFACT_TYPES = (Handoff, AtomicMemory, Experience, Skill, Profile, Prompt, TopicMemory, ImageAnalysis)
 BUILTIN_CANDIDATE_PROPOSAL_TYPES = {
     Experience.family: ExperienceContent,
     Skill.family: SkillContent,
@@ -903,6 +904,15 @@ class RelationalContexts:
         """Validate and durably append one worker-materialized Source observation."""
 
         observation = request.observation
+        if observation.source_type in {
+            "image.original",
+            "image.interpretation",
+            "experimental.image.original",
+            "experimental.image.analysis",
+        }:
+            from powercontext.errors import InvalidSourceObservationError
+
+            raise InvalidSourceObservationError("source_type", "image Sources require the registered media command")
         try:
             async with self.database.transaction() as connection:
                 manifest = await self.repositories.source_definitions.get(

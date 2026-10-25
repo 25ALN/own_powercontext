@@ -43,6 +43,7 @@ from powercontext.builtin.artifacts.topic_memory.generation import (
 )
 from powercontext.builtin.code.models import CodeConfig
 from powercontext.builtin.dream.models import DreamBudget
+from powercontext.builtin.images.config import ImageConfig
 from powercontext.builtin.inference import character_token_estimator
 from powercontext.builtin.persistence.oceanbase import OceanBaseConfig
 from powercontext.builtin.persistence.seekdb import SeekDBConfig
@@ -308,6 +309,14 @@ class InferenceConfig(BaseModel):
 
     model_config = ConfigDict(hide_input_in_errors=True)
 
+    vision_use_generation: bool = False
+    vision_model: str | None = None
+    vision_base_url: str | None = None
+    vision_deployment_id: str | None = None
+    vision_headers: dict[str, SecretStr] = Field(default_factory=dict, repr=False)
+    vision_timeout_seconds: int = Field(default=120, ge=1, le=300)
+    vision_max_attempts: int = Field(default=3, ge=1, le=5)
+    vision_max_output_tokens: int = Field(default=4096, ge=1, le=8192)
     generation_model: str | None = None
     generation_base_url: AnyHttpUrl | None = None
     generation_headers: dict[str, SecretStr] = Field(default_factory=dict, repr=False)
@@ -501,6 +510,7 @@ def normalize_database_discriminator(value: Any) -> Any:
 class BuiltinConfig(BaseModel):
     """Configuration for one built-in runtime and its database."""
 
+    images: ImageConfig = Field(default_factory=ImageConfig)
     code: CodeConfig = Field(default_factory=CodeConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     database: DatabaseConfig = Field(default_factory=SQLiteConfig, discriminator="kind")

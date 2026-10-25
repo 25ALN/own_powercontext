@@ -37,7 +37,9 @@ limitations under the License.
         </div>
       </div>
       {% endif %}
+      {% if not standalone|default(false) %}
       <span class="htmx-indicator spinner-border spinner-border-sm ms-auto" id="evidence-loading" role="status" aria-label="{{ t.loading }}"></span>
+      {% endif %}
     </div>
     {% if not page_error and source.source_id %}<code class="d-block text-secondary bg-transparent p-0 text-truncate mt-2" title="{{ source.source_id }}">{{ source.source_id }}</code>{% endif %}
     {% if not standalone|default(false) %}{% include 'components/source-network-error.html' %}{% endif %}
@@ -47,6 +49,10 @@ limitations under the License.
 {% if page_error %}
 <div class="modal-body">
   {% from 'components/read-error.html' import read_error with context %}{{ read_error(page_error, t.source_label, link('evidence/' ~ source_id, origin=origin, source_type=source_type)) }}
+</div>
+{% elif source.image|default(none) %}
+<div class="modal-body" tabindex="0" role="region" aria-label="{{ t.source_original }}">
+  {% include 'components/image-evidence.html' %}
 </div>
 {% else %}
 <div class="modal-body original-content" tabindex="0" role="region" aria-label="{{ t.source_original }}">{{ source.text }}</div>

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
+from image_capture_config import enabled_profile
 from powercontext_client_config import parse_boolean, resolve_allow_insecure_http
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic.fields import FieldInfo
@@ -124,6 +125,24 @@ class _StoredAuthorizationSettingsSource(PydanticBaseSettingsSource):
         return {"authorization": authorization} if authorization else {}
 
 
+class _ImageCaptureSettingsSource(PydanticBaseSettingsSource):
+    """Saved project consent works for Desktop processes with no terminal env."""
+
+    @override
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        return self().get(field_name), field_name, False
+
+    @override
+    def __call__(self) -> dict[str, Any]:
+        try:
+            profile = enabled_profile(os.getcwd(), _server_url_from_mcp_configuration())
+        except (OSError, ValueError, TypeError, KeyError, RecursionError):
+            # An optional image configuration must not disable ordinary recall
+            # or prevent the configuration CLI from repairing the profile.
+            return {}
+        return {"capture_images": True} if profile else {}
+
+
 class CodexPluginSettings(BaseSettings):
     """Validated configuration loaded once by a plugin entry point."""
 
@@ -144,6 +163,8 @@ class CodexPluginSettings(BaseSettings):
     bootstrap_handoff: BootstrapHandoff | None = None
     include_code: bool = False
     capture_prompts: bool = True
+    capture_images: bool = False
+    image_capture_budget_seconds: float = Field(default=6.0, gt=0, le=8)
     flush_on_capture: bool = False
     request_timeout_seconds: float = Field(default=3.0, gt=0)
     http_budget_seconds: float = Field(default=6.0, gt=0)
@@ -205,6 +226,7 @@ class CodexPluginSettings(BaseSettings):
             init_settings,
             env_settings,
             dotenv_settings,
+            _ImageCaptureSettingsSource(settings_cls),
             _StoredAuthorizationSettingsSource(settings_cls),
             file_secret_settings,
         )

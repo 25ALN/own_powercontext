@@ -31,7 +31,9 @@ if TYPE_CHECKING:
     from powercontext.builtin.tags import ArtifactTagSet, TagFilter, TagQuery, TagQueryPage, TagTarget
 
 BaseArtifactFamily = Literal["atomic-memory", "experience", "skill", "handoff", "profile", "prompt", "topic-memory"]
-ArtifactReadFamily = Literal["atomic-memory", "experience", "skill", "handoff", "profile", "prompt", "topic-memory"]
+ArtifactReadFamily = Literal[
+    "atomic-memory", "experience", "skill", "handoff", "profile", "prompt", "topic-memory", "image-analysis"
+]
 
 
 class _RecordModel(BaseModel):
@@ -42,7 +44,13 @@ class SourceRecord(_RecordModel):
     """One durable Source and its journal position."""
 
     scope_id: str
-    source_type: Literal["content"]
+    source_type: Literal[
+        "content",
+        "image.original",
+        "image.interpretation",
+        "experimental.image.original",
+        "experimental.image.analysis",
+    ]
     source_id: str
     content: JsonValue
     position: int

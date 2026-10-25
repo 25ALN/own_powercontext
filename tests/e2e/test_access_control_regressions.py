@@ -47,6 +47,84 @@ ADMIN = PrincipalRef(type="service", id="admin")
 AUDIT = AccessAuditContext(transport="http", operation="test")
 
 
+@pytest.mark.parametrize("operation", ["create", "replace"])
+def test_atomic_foundational_write_survives_a_commit_during_authorization(tmp_path, monkeypatch, operation):
+    """A concurrent commit must not turn a permitted Memory write into a 503."""
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from powercontext.server.authz import AccessAuditEvent
+    from powercontext.server.authz.repository import RelationalAccessRepository
+
+    async def scenario():
+        async with _server(tmp_path) as (_, client, access):
+            scope = await _scope(client)
+            collection = f"/v1/scopes/{scope}/artifacts"
+            original = None
+            if operation == "replace":
+                original = await client.post(
+                    collection,
+                    json={"family": "atomic-memory", "content": {"kind": "fact", "text": "Before revision"}},
+                )
+                assert original.status_code == 201, original.text
+            snapshot = RelationalAccessRepository._decision_snapshot
+            interleaved = False
+
+            async def commit_after_snapshot(repository, *args, **kwargs):
+                nonlocal interleaved
+                state = await snapshot(repository, *args, **kwargs)
+                if not interleaved and repository._bound_connection is not None:
+                    interleaved = True
+                    await access.audit.append_audit(
+                        AccessAuditEvent(
+                            cursor=None,
+                            event_id=uuid4().hex,
+                            occurred_at=datetime.now(UTC),
+                            request_id="concurrent-write",
+                            transport="http",
+                            operation="concurrent_write",
+                            principal=ADMIN,
+                            actor=None,
+                            action=AccessAction.SCOPE_READ,
+                            resource=ResourceRef.scope(scope),
+                            allowed=True,
+                            reason_code="test",
+                            policy_revision=state.policy_revision,
+                        )
+                    )
+                return state
+
+            monkeypatch.setattr(RelationalAccessRepository, "_decision_snapshot", commit_after_snapshot)
+            content = {"kind": "fact", "text": "Accepted revision"}
+            if original is None:
+                result = await client.post(collection, json={"family": "atomic-memory", "content": content})
+                assert result.status_code == 201, result.text
+            else:
+                path = collection + "/atomic-memory/" + original.json()["artifact_id"]
+                result = await client.put(
+                    path, headers={"If-Match": original.headers["etag"]}, json={"content": content}
+                )
+                assert result.status_code == 200, result.text
+            assert interleaved
+            identity = result.json()["artifact_id"]
+            path = collection + "/atomic-memory/" + identity
+            current = await client.get(path)
+            assert current.status_code == 200, current.text
+            assert current.json()["content"]["text"] == content["text"]
+            assert current.json()["revision"] == (1 if original is None else 2)
+            audit = await access.audit.list_audit(resource=ResourceRef.scope(scope), limit=100)
+            expected_operation = "create_artifact" if original is None else "replace_artifact"
+            assert any(event.operation == expected_operation and event.allowed for event in audit)
+            if original is not None:
+                stale = await client.put(
+                    path, headers={"If-Match": original.headers["etag"]}, json={"content": content}
+                )
+                assert stale.status_code == 412, stale.text
+                assert (await client.get(path)).json() == current.json()
+
+    asyncio.run(scenario())
+
+
 @contextmanager
 def _reject_owner_insert(path: Path):
     with sqlite3.connect(path) as connection:

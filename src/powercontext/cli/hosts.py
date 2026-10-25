@@ -58,6 +58,7 @@ def validate_native_options(selected: Sequence[str], **options: Any) -> None:
     """Reject explicit flags that none of the selected agents can use."""
     owners = {
         "capture_prompts": ("claude-code", "kimi-code", "zcode"),
+        "capture_images": ("codex",),
         "scope_id": ("kimi-code",),
         "workspace_scope": ("kimi-code",),
         "boundary_flush": ("zcode",),
@@ -94,6 +95,7 @@ def validate_native_options(selected: Sequence[str], **options: Any) -> None:
 def native_options(host: str, **options: Any) -> dict[str, Any]:
     """Pass only options owned by the selected native adapter."""
     fields = {
+        "codex": ("capture_images",),
         "claude-code": ("capture_prompts",),
         "dsh": ("dsh_target",),
         "kimi-code": ("scope_id", "capture_prompts", "workspace_scope", "profile"),

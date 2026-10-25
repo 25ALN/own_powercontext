@@ -1684,8 +1684,26 @@ async def _validate_selected_scopes(connection: AsyncConnection, scopes: tuple[s
         raise BundleFormatError("selected scope set omits an Artifact publication source scope")
 
 
+def _require_portable_media_encoding(record: _Record) -> None:
+    """Format v1 has no media byte/request records; never publish an incomplete recovery artifact."""
+    media_sources = {
+        "image.original",
+        "image.interpretation",
+        "experimental.image.original",
+        "experimental.image.analysis",
+    }
+    if (record.record_type == "source" and record.identity["source_type"] in media_sources) or (
+        record.record_type == "artifact_revision" and record.identity["family"] == "image-analysis"
+    ):
+        raise BundleCompatibilityError(
+            "logical bundle format v1 does not retain media bytes or requests; use a complete SQLite backup"
+        )
+
+
 def _validate_record_safe(record: _Record, /) -> None:
-    """Reject secret-shaped configuration and host paths without echoing content."""
+    """Reject unsupported recovery records, secret-shaped configuration and host paths."""
+
+    _require_portable_media_encoding(record)
 
     for field, value in record.payload.items():
         encoded = cast(dict[str, object], value).get("base64") if isinstance(value, dict) else None
@@ -1749,6 +1767,7 @@ def _validate_dependencies(
             _validate_record_dependencies(record, contains)
             _validate_candidate_record(record, index, candidate_decoder)
             _validate_observation_record(record, index)
+            _validate_memory_ordering_record(record, index, contains)
             _validate_skill_package_dependency(record, packages)
             if record.record_type == "source":
                 if int(record.payload["journal_position"]) > heads.get(str(record.identity["scope_id"]), -1):
@@ -1902,6 +1921,133 @@ def _validate_observation_record(record: _Record, index: sqlite3.Connection, /) 
         validate_source_observation(observation, manifest)
     except (SourceError, ValueError) as error:
         raise BundleFormatError("Source observation does not match its definition manifest") from error
+
+
+def _validate_memory_ordering_record(record, index, contains):  # noqa: C901 - exact ordering dependency contract
+    """Check retained ordering before any restore write, with exact disk-backed keys."""
+    if record.record_type != "artifact_revision" or record.identity["family"] != "atomic-memory":
+        return
+    from powercontext.builtin.artifacts.atomic_memory.models import AtomicMemoryContent
+
+    try:
+        content = AtomicMemoryContent.model_validate(_decoded_bytes_json(record.payload["content"], "Memory content"))
+    except ValueError as error:
+        raise BundleFormatError("Memory ordering or content is invalid") from error
+    if content.ordering is None:
+        return
+    scope = record.identity["scope_id"]
+    for statement in content.ordering.statements:
+        for support in statement.evidence:
+            anchor = support.anchor
+            if anchor is not None and (
+                support.source is None
+                or anchor.scope_id != scope
+                or anchor.recorded_at is not None
+                or not contains(
+                    "source_position",
+                    {"scope_id": scope, **anchor.source.model_dump(), "position": anchor.journal_position},
+                )
+                or support.source != anchor.source
+            ):
+                raise BundleFormatError("Memory ordering anchor does not match its retained Source")
+            if support.source is not None and not contains(
+                "source", {"scope_id": scope, **support.source.model_dump()}
+            ):
+                raise BundleFormatError("Memory ordering references missing Source")
+            refs = (support.via_artifact,) if support.via_artifact is not None else (support.artifact,)
+            for ref in refs:
+                if ref is not None and not contains(
+                    "artifact_lineage_artifact:support",
+                    {
+                        **record.identity,
+                        "upstream_family": ref.family,
+                        "upstream_artifact_id": ref.artifact_id,
+                        "upstream_revision": ref.revision,
+                    },
+                ):
+                    raise BundleFormatError("Memory ordering requires exact direct Artifact lineage")
+            if support.via_artifact is None:
+                if support.source is not None and not contains(
+                    "artifact_lineage_source:support",
+                    {
+                        **record.identity,
+                        **support.source.model_dump(),
+                    },
+                ):
+                    raise BundleFormatError("Memory ordering requires exact direct Source lineage")
+                continue
+            _validate_inherited_memory_support(support, scope, index)
+
+
+def _indexed_record(index, kind, identity):
+    row = index.execute(
+        "SELECT document FROM identities WHERE record_type=? AND identity=?", (kind, _identity_key(identity))
+    ).fetchone()
+    if row is None or row[0] is None:
+        raise BundleFormatError("Memory ordering requires an exact retained input")
+    return _parse_record(json.loads(row[0]))
+
+
+def _validate_inherited_memory_support(support, scope, index):
+    from powercontext.builtin.artifacts.atomic_memory.models import AtomicMemoryContent
+    from powercontext.builtin.artifacts.atomic_memory.ordering import StatementEvidence
+    from powercontext.builtin.sources.content import ContentSource
+
+    ref = support.via_artifact
+    if ref.family != "atomic-memory":
+        raise BundleFormatError("Memory ordering requires an exact retained Memory")
+    identity = {"scope_id": scope, **ref.model_dump()}
+    parent_record = _indexed_record(index, "artifact_revision", identity)
+    parent = AtomicMemoryContent.model_validate(_decoded_bytes_json(parent_record.payload["content"], "Memory content"))
+    if parent.ordering is not None:
+        if any(
+            old.model_copy(update={"via_artifact": ref}) == support
+            for item in parent.ordering.statements
+            for old in item.evidence
+        ):
+            return
+        raise BundleFormatError("Memory ordering differs from its exact retained Memory")
+    # Match the runtime's one-input, exact-text legacy recovery without scanning Sources.
+    counts = dict(
+        index.execute(
+            "SELECT record_type,document FROM identities WHERE identity=? AND record_type IN "
+            "('artifact_lineage_source:count','artifact_lineage_artifact:count')",
+            (_identity_key(identity),),
+        )
+    )
+    if counts.get("artifact_lineage_source:count") != 1 or counts.get("artifact_lineage_artifact:count", 0) != 0:
+        raise BundleFormatError("Legacy Memory ordering has no unambiguous retained basis")
+    anchor = support.anchor
+    if anchor is None or support.source != anchor.source:
+        raise BundleFormatError("Legacy Memory ordering has no exact Source basis")
+    source_record = _indexed_record(index, "source", {"scope_id": scope, **support.source.model_dump()})
+    source = ContentSource.model_validate(_decoded_bytes_json(source_record.payload["payload"], "Source payload"))
+    if (
+        source_record.identity["source_type"] != "content"
+        or source.internal is not None
+        or source.working_note
+        or len(source.content.encode("utf-8")) > 32768
+        or source.content != parent.text
+        or support != StatementEvidence(source=support.source, anchor=anchor, via_artifact=ref)
+    ):
+        raise BundleFormatError("Legacy Memory ordering differs from its retained basis")
+
+
+def _index_memory_lineage(index, record):
+    if record.record_type not in {"artifact_lineage_source", "artifact_lineage_artifact"}:
+        return
+    parent = {key: value for key, value in record.identity.items() if key != "ordinal"}
+    edge = {**parent, **record.payload}
+    edge.pop("is_merge_input", None)
+    index.execute(
+        "INSERT OR IGNORE INTO identities (record_type, identity) VALUES (?, ?)",
+        (record.record_type + ":support", _identity_key(edge)),
+    )
+    index.execute(
+        "INSERT INTO identities (record_type,identity,document) VALUES (?,?,1) "
+        "ON CONFLICT(record_type,identity) DO UPDATE SET document=document+1",
+        (record.record_type + ":count", _identity_key(parent)),
+    )
 
 
 def _validate_candidate_record(
@@ -2319,7 +2465,8 @@ def _identity_index(source: Path, /) -> Iterator[sqlite3.Connection]:
                         record.record_type,
                         _identity_key(record.identity),
                         _canonical_json(_record_document(record))
-                        if record.record_type in {"candidate_version", "source_definition"}
+                        if record.record_type in {"candidate_version", "source_definition", "source"}
+                        or (record.record_type == "artifact_revision" and record.identity["family"] == "atomic-memory")
                         else None,
                     ),
                 )
@@ -2331,6 +2478,7 @@ def _identity_index(source: Path, /) -> Iterator[sqlite3.Connection]:
             except sqlite3.IntegrityError as error:
                 raise BundleFormatError("bundle contains duplicate immutable or unique identity") from error
             _index_publication_dependencies(connection, record)
+            _index_memory_lineage(connection, record)
             _index_tag_set(connection, record)
             if record.record_type == "candidate_version":
                 connection.execute(

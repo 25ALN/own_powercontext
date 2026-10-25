@@ -99,13 +99,13 @@ def _check_cli(root: Path, extras: set[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("extras", choices=("builtin", "cli", "builtin,cli", "server,cli"))
+    parser.add_argument("extras", choices=("builtin", "images", "cli", "builtin,cli", "server,cli"))
     extras = set(parser.parse_args().extras.split(","))
     if "cli" in extras:
         extras.add("builtin")
     with tempfile.TemporaryDirectory(prefix="powercontext-role-") as temporary:
         root = Path(temporary)
-        if extras & {"builtin", "server"}:
+        if extras & {"builtin", "images", "server"}:
             asyncio.run(_check_builtin(root))
         if "cli" in extras:
             _check_cli(root, extras)

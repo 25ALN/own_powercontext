@@ -28,7 +28,7 @@ from powercontext.server.dashboard.content import (
 )
 from powercontext.server.dashboard.errors import ReadError
 from powercontext.server.dashboard.pagination import PAGE_SIZE, cursor_links
-from powercontext.server.dashboard.presenters import memory_view, set_scope, usage_view
+from powercontext.server.dashboard.presenters import evidence_sources, memory_view, set_scope, usage_view
 
 
 @asynccontextmanager
@@ -148,6 +148,7 @@ async def _select_note(snapshot, rows, ctx):
         }
         if "matched_by" in selected:
             ctx["selected_note"].update(matched_by=selected["matched_by"], score=selected["score"])
+        ctx["related_sources"] = evidence_sources(ctx["selected_note"]["sources"])
 
 
 async def _load_content(snapshot, request, ctx, execution):
