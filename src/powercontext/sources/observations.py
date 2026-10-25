@@ -20,7 +20,17 @@ import hashlib
 from typing import Any, Literal
 
 import rfc8785
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from powercontext.errors import (
     InvalidSourceDefinitionError,
@@ -161,9 +171,28 @@ class SourceObservation(Source):
 
 
 def manifest_for_definition(definition: SourceDefinition[Any, Any, Any], /) -> SourceDefinitionManifest:
-    """Build the immutable declaration transported by a remote worker."""
+    """Build a declaration matching the canonical remote payload representation."""
 
-    source_schema = _json_object(definition.source_class.model_json_schema())
+    return _manifest_for_definition(definition, transport=True)
+
+
+def _manifest_for_definition(
+    definition: SourceDefinition[Any, Any, Any],
+    /,
+    *,
+    transport: bool,
+) -> SourceDefinitionManifest:
+    if transport and _validation_schema_matches_payload(definition.source_class):
+        source_schema = _json_object(definition.source_class.model_json_schema())
+    elif transport:
+        source_schema = _json_object(
+            definition.source_class.model_json_schema(
+                mode="serialization",
+                by_alias=bool(definition.source_class.model_config.get("serialize_by_alias")),
+            )
+        )
+    else:
+        source_schema = _json_object(definition.source_class.model_json_schema(mode="serialization"))
     projections = tuple(
         SourceProjectionManifest(
             key=SourceProjectionKey(name=projection.name, version=projection.version),
@@ -213,6 +242,47 @@ def project_source_for_transport(
         payload=payload,
         projections=projections,
     )
+
+
+def _validation_schema_matches_payload(
+    source_class: type[BaseModel],
+    seen: set[type[BaseModel]] | None = None,
+) -> bool:
+    """Return whether validation-mode keys already describe the serialized payload."""
+
+    visited = set() if seen is None else seen
+    if source_class in visited:
+        return True
+    visited.add(source_class)
+    serialize_by_alias = bool(source_class.model_config.get("serialize_by_alias"))
+    for name, field in source_class.model_fields.items():
+        if field.exclude:
+            continue
+        serialization_key = (field.serialization_alias or field.alias or name) if serialize_by_alias else name
+        if field.is_required() and _validation_schema_key(name, field) != serialization_key:
+            return False
+        annotation = field.annotation
+        if (
+            field.is_required()
+            and isinstance(annotation, type)
+            and issubclass(annotation, BaseModel)
+            and not _validation_schema_matches_payload(annotation, visited)
+        ):
+            return False
+    return True
+
+
+def _validation_schema_key(name: str, field: Any) -> str | None:
+    alias = field.validation_alias
+    if isinstance(alias, str):
+        return alias
+    if isinstance(alias, AliasChoices):
+        return next((choice for choice in alias.choices if isinstance(choice, str)), None)
+    if isinstance(alias, AliasPath):
+        return name  # Pydantic keeps the field name for path-based validation.
+    if alias is not None:
+        return None
+    return field.alias if field.alias is not None else name
 
 
 def _source_definition_fingerprint(
