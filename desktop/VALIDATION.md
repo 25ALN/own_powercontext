@@ -20,6 +20,27 @@ cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
 [Desktop CI](../.github/workflows/desktop.yml) also builds a Server wheel, runs real Server and CLI tests, checks Windows credentials and process containment, builds the installer, and exercises installation, the installed UI and uninstallation. Consult the PR checks for the exact commit being reviewed. Reports, logs and screenshots are generated under ignored `.artifacts/` and uploaded as Actions artifacts; do not copy them into the repository.
 
+## Native session observation checks
+
+Windows x64 checks for the native session collector use Rust 1.95.0, Node 24.14.1 and pnpm 11.13.1.
+`cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, all 62 native tests and generated IPC
+checking pass. The new regressions exercise real loopback HTTP sockets with synthetic responses, including
+readiness 503, request versus user-operation counting, millisecond latency, cancellation, unknown writes,
+invalid decoded receipts, reset during an in-flight write, bounded retention, safe projection and collector
+contention/poisoning. Mock Tauri IPC checks exercise the actual capability configuration and reject untrusted
+windows and origins; session commands also work without connection state.
+
+Desktop lint, TypeScript checking, all 98 UI tests and the frontend production build pass. The Desktop OpenAPI
+contract checks pass without contract changes. Website lint and link validation pass, including both locale
+versions of the [session observation contract](../docs/en/development/desktop-session-observations.md).
+`uv lock --locked` and `uv run --locked pytest tests/test_desktop_contract.py -q` pass.
+
+Repository hooks pass except `ty check` on Windows, which reports POSIX-only attributes in unchanged Python files
+under `src/powercontext/builtin/code/` and `tests/builtin/test_native_code.py`. The explicit Linux-target check,
+`uv run --locked ty check --python-platform linux`, passes. The native tests do not qualify an actual Server,
+installed application, clipboard interaction or macOS execution. The This session UI and installed copy flow
+remain separate delivery work; native collection does not make the placeholder page operational.
+
 ## Compatibility scope
 
 [compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-atomic-1da99747-v1` below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
