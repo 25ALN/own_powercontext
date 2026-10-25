@@ -9,6 +9,9 @@ Before adding a log, metric, or span, identify the question it answers and the b
 Use the [operational field contract](../docs/operate/observability.md) for names, units, outcomes, error categories,
 and correlation semantics. [RFC 0046](../rfcs/0046_observability_foundations.md) defines privacy and signal ownership.
 
+For the Desktop host's process-local measurements and native safe export, use the separate
+[Desktop session observation contract](desktop-session-observations.md). It does not configure Server logging or tracing.
+
 ## Add an operational event
 
 Use a module logger and `powercontext._logging.log_safely`. Keep the message fixed and put approved diagnostic values

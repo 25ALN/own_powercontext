@@ -10,6 +10,9 @@ description: 使用稳定字段、正确的 correlation 和 failure isolation �
 [operational field contract](../docs/operate/observability.md)。
 [RFC 0046](../rfcs/0046_observability_foundations.md) 定义 privacy 与 signal ownership。
 
+Desktop 宿主的进程内测量与原生安全导出遵循独立的 [Desktop 会话观察契约](desktop-session-observations.md)，
+不会配置 Server 日志或 tracing。
+
 ## 新增 operational event
 
 使用 module logger 和 `powercontext._logging.log_safely`。Message 使用固定文本，批准的诊断值放入 structured fields。
