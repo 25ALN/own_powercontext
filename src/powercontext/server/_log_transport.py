@@ -60,9 +60,12 @@ class LogSender:
 class LogReceiver:
     """Multiplex dedicated Worker sockets without owning task execution."""
 
-    def __init__(self, deliver: Callable[[str], None], on_failure: Callable[[], None]) -> None:
+    def __init__(
+        self, deliver: Callable[[str], None], on_failure: Callable[[], None], on_drop: Callable[[int], None]
+    ) -> None:
         self._deliver = deliver
         self._on_failure = on_failure
+        self._on_drop = on_drop
         self._stopped = Event()
         self._lock = Lock()
         self._pending: Queue[socket.socket] = Queue(maxsize=_MAX_CHANNELS)
@@ -135,8 +138,9 @@ class LogReceiver:
                 self._on_failure()
 
     def _close_channel(self, connection: socket.socket) -> None:
-        if self._buffers.pop(connection):
-            self._on_failure()
+        buffer = self._buffers.pop(connection)
+        if buffer:
+            self._on_drop(buffer.count(b"\n") + int(not buffer.endswith(b"\n")))
         self._selector.unregister(connection)
         connection.close()
 

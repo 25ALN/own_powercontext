@@ -20,11 +20,15 @@ import asyncio
 import io
 import json
 import logging
+import multiprocessing
+import selectors
+import socket
 import subprocess
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import Event
 from typing import Any
 
 import pytest
@@ -33,6 +37,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
+from prometheus_client import CollectorRegistry
 
 from powercontext.builtin.code.telemetry import stage
 from powercontext.builtin.inference import (
@@ -62,6 +67,7 @@ from powercontext.builtin.runtime.processing_contracts import (
 from powercontext.server.context import bind_request_id, current_request_id, reset_request_id
 from powercontext.server.factory import create_server_app
 from powercontext.server.logging import JsonFormatter, OperationalContextFilter, WorkerLogging, worker_logging
+from powercontext.server.operational_metrics import OperationalMetricsCollector
 from powercontext.server.settings import McpConfig, ServerLoggingConfig, ServerSettings
 from powercontext.server.telemetry import service_resource
 from powercontext.server.tracing import ServerTracing
@@ -87,6 +93,51 @@ def _noisy_logging_worker(assignment: ArtifactProcessingWorkAssignment) -> Artif
             "Worker observation %s %s", index, "x" * 2000, extra={"source_body": _PRIVATE}
         )
     return ArtifactProcessingWorkerCompletion()
+
+
+def _large_logging_probe(initializer: WorkerLogging) -> None:
+    initializer()
+    logging.getLogger("powercontext.worker.probe").info("Large observation %s", "x" * 200_000)
+
+
+def test_discarded_worker_record_is_counted_in_prometheus(tmp_path, monkeypatch, capfd) -> None:
+    registry = CollectorRegistry()
+    registry.register(OperationalMetricsCollector(role="background"))
+    metric = "powercontext_server_telemetry_log_records_dropped_total"
+    before = registry.get_sample_value(metric)
+    assert before is not None
+    resume = Event()
+    select = selectors.DefaultSelector.select
+
+    def delayed_select(selector, timeout=None):
+        resume.wait(timeout=30)
+        return select(selector, timeout)
+
+    monkeypatch.setattr(selectors.DefaultSelector, "select", delayed_select)
+    config = ServerLoggingConfig(file=True, directory=tmp_path, format="json")
+    with worker_logging(config, role="background") as initializer:
+        assert isinstance(initializer, WorkerInitializerPreparation)
+        with initializer.prepare() as child_initializer:
+            assert isinstance(child_initializer, WorkerLogging)
+            assert child_initializer.channel is not None
+            child_initializer.channel.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+            process = multiprocessing.get_context("spawn").Process(
+                target=_large_logging_probe, args=(child_initializer,)
+            )
+            process.start()
+        try:
+            process.join(timeout=30)
+            assert process.exitcode == 0
+        finally:
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=5)
+            process.close()
+            resume.set()
+    assert registry.get_sample_value(metric) == before + 1
+    output = capfd.readouterr()
+    assert "observability.log_failed" in output.err
+    assert "Large observation" not in output.out + output.err
 
 
 def test_worker_completion_does_not_wait_for_slow_log_consumer(tmp_path) -> None:

@@ -36,7 +36,7 @@ powercontext server run
 
 Worker 在发送端完成格式化和字段白名单过滤，通过各自专用的 socketpair 将日志发送给所属 Server。每条通道在 spawn 前创建，仅发送端传递给对应 Worker。接收器不监听网络端口，不反序列化 Python 对象。JSON 行封装保留输出中的换行，Worker 身份及 request/trace 关联在发送前确定。一个接收线程复用多个通道，一个写入线程消费有界的进程内队列；日志处理不额外创建进程。仅输出标准流时继续使用标准 stream handler。
 
-每个文件使用独占写入锁，相同目录和角色的第二个 Server 会被拒绝；独立副本应使用不同目录。关闭日志前先停止 Worker。关闭时最多等待一秒排空 Worker 日志通道，再通过 `QueueListener.stop()` 完成队列中的输出，最后关闭 handler；最终写入排空需要等待文件 sink 完成 I/O。残缺记录直接丢弃，不打印其内容；单个 Worker 通道故障不影响其他通道。发送等待有上限，发送失败后关闭该 Worker 的日志通道。接收器最多处理 256 条并发通道，单条 JSON 行封装在 UTF-8 编码后最多 256 KiB。超大记录、队列满、传输故障或进程被强制退出时可能丢失日志，日志仍为 best-effort。
+每个文件使用独占写入锁，相同目录和角色的第二个 Server 会被拒绝；独立副本应使用不同目录。关闭日志前先停止 Worker。关闭时最多等待一秒排空 Worker 日志通道，再通过 `QueueListener.stop()` 完成队列中的输出，最后关闭 handler；文件写入、压缩和关闭使用原生 logging 清理，不另设超时；文件 sink 阻塞时可能延迟 Server 进程退出。残缺记录直接丢弃，不打印其内容；单个 Worker 通道故障不影响其他通道。发送等待有上限，发送失败后关闭该 Worker 的日志通道。接收器最多处理 256 条并发通道，单条 JSON 行封装在 UTF-8 编码后最多 256 KiB。超大记录、队列满、传输故障或进程被强制退出时可能丢失日志，日志仍为 best-effort。
 
 macOS 和 Windows 个人服务默认启用托管文件输出，显式设置 `POWERCONTEXT_SERVER_LOGGING_FILE=false` 可保留标准流输出。Linux 个人服务默认继续使用 journal。宿主管理的 stdout/stderr 文件仍接收启动诊断和直接的标准流写入，不受托管 handler 的轮替策略管理。`powercontext service status` 显示宿主诊断日志目录或 journal 查询条件；自定义托管目录由 `POWERCONTEXT_SERVER_LOGGING_DIRECTORY` 指定。
 
@@ -146,7 +146,7 @@ API 与后台进程同机部署时应使用不同端口。设置 `POWERCONTEXT_S
 | `dependency_probe_duration_seconds` | `dependency`、`outcome`：实际探测耗时，不包含缓存命中 |
 | `telemetry_collection_timestamp_seconds` | 最近成功复制被动快照的时间；首次采集前为 `0` |
 | `telemetry_collection_failures_total` | 被动采集失败次数；失败保留先前观察 |
-| `telemetry_log_records_dropped_total` | 进程自有日志 handler 未能交付的记录数 |
+| `telemetry_log_records_dropped_total` | 进程自有 handler 或 Worker 接收端确认未能交付的记录数；干净的 EOF/reset 不计入丢失，未观测到的丢失不计数 |
 
 详细探测观察覆盖 `database`、`inference.generation`、`inference.rerank`、`inference.decision` 和
 `inference.embedding`。同一 `dependency_state` 指标还包含有界总体检查：`runtime`、

@@ -214,7 +214,7 @@ _LOG_FAILURES = 0
 
 
 def log_record_failures() -> int:
-    """Return process-local records the configured handler could not deliver."""
+    """Return observed process-local log records that could not be delivered."""
 
     with _LOG_FAILURE_LOCK:
         return _LOG_FAILURES
@@ -235,9 +235,12 @@ class _FailureIsolatedHandler(logging.Handler):
 
     @override
     def handleError(self, record: logging.LogRecord) -> None:
+        self._record_failures()
+
+    def _record_failures(self, count: int = 1) -> None:
         global _LOG_FAILURES
         with _LOG_FAILURE_LOCK:
-            _LOG_FAILURES += 1
+            _LOG_FAILURES += count
         self._notify_failure()
 
     def _notify_failure(self) -> None:
@@ -329,7 +332,7 @@ class _OperationalQueueHandler(_FailureIsolatedHandler, QueueHandler):
             listener = _DrainingQueueListener(self._output_queue, file_handler)
             listener.start()
             self._listener = listener
-            self._receiver = LogReceiver(self._receive, self._notify_failure)
+            self._receiver = LogReceiver(self._receive, self._notify_failure, self._record_failures)
             atexit.register(self.close)
         except BaseException:
             if self._listener is None:
