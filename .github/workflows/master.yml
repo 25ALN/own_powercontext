@@ -290,6 +290,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up the environment
+        id: seekdb_setup
         uses: ./.github/actions/setup-python-env
         with:
           python-version: ${{ matrix.python-version }}
@@ -297,7 +298,31 @@ jobs:
       - name: Test code indexing with embedded seekdb
         run: make code-seekdb-test
 
+      - name: Test database bootstrap with embedded seekdb without skips
+        timeout-minutes: 5
+        env:
+          POWERCONTEXT_TEST_BOOTSTRAP_SEEKDB: "1"
+          POWERCONTEXT_TEST_BOOTSTRAP_DIAGNOSTICS: ${{ github.workspace }}/.powercontext/database-bootstrap-ci
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -o pipefail
+          mkdir -p .powercontext/database-bootstrap-ci
+          uv run --locked --extra seekdb --extra code python -m pytest \
+            tests/e2e/test_database_bootstrap.py -k seekdb -vv -rs \
+            -o faulthandler_timeout=60 --durations=20 \
+            --junitxml=.powercontext/database-bootstrap-ci/seekdb.xml \
+            2>&1 | tee .powercontext/database-bootstrap-ci/pytest.log
+          uv run --locked --extra seekdb --extra code python - <<'PYCODE'
+          from xml.etree import ElementTree
+
+          suites = ElementTree.parse(".powercontext/database-bootstrap-ci/seekdb.xml").getroot()
+          cases = list(suites.iter("testcase"))
+          if not cases or any(case.find("skipped") is not None for case in cases):
+              raise SystemExit("Real seekDB bootstrap contracts must execute; skipped tests are not acceptance.")
+          PYCODE
+
       - name: Test unified migrations with embedded seekdb
+        if: ${{ !cancelled() && steps.seekdb_setup.outcome == 'success' }}
         timeout-minutes: 10
         env:
           POWERCONTEXT_TEST_MIGRATION_SEEKDB: "1"
@@ -344,6 +369,14 @@ jobs:
               "$seekdb_runner_node" -k seekdb \
               2>&1 | tee -a seekdb-migrations.log
           done
+
+      - name: Upload seekdb bootstrap diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: seekdb-bootstrap-${{ matrix.python-version }}
+          path: .powercontext/database-bootstrap-ci/
+          if-no-files-found: ignore
 
       - name: Upload seekdb migration diagnostics
         if: always()
