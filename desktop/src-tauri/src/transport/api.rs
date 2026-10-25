@@ -21,7 +21,7 @@ use reqwest::{
     Method,
     header::{AUTHORIZATION, HeaderValue},
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use ts_rs::TS;
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -75,6 +75,51 @@ pub struct ServerApi {
     transport: Transport,
     endpoint: Endpoint,
     credential: Option<Secret>,
+}
+
+/// A foreign product is a recognizable incompatibility, rather than malformed JSON.
+pub enum DiscoveryDocument {
+    Server(ServerInfo),
+    UnsupportedProduct,
+}
+impl<'de> Deserialize<'de> for DiscoveryDocument {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Document {
+            Server(ServerInfo),
+            OtherProduct { product: String },
+        }
+        let server = match Document::deserialize(deserializer)? {
+            Document::Server(server) => server,
+            Document::OtherProduct { product } if product != "powercontext" => {
+                return Ok(Self::UnsupportedProduct);
+            }
+            _ => return Err(serde::de::Error::custom("invalid discovery document")),
+        };
+        if server.server_id.is_empty()
+            || server.server_id.chars().count() > 128
+            || server.package_version.is_empty()
+            || server.schema_version.major < 1
+            || server.schema_version.minor < 0
+            || server.api_contract_version.major < 1
+            || server.api_contract_version.minor < 0
+            || server.feature_contracts.values().any(|feature| {
+                feature.version.major < 1
+                    || feature.version.minor < 0
+                    || feature.operations.is_empty()
+                    || feature
+                        .operations
+                        .iter()
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .len()
+                        != feature.operations.len()
+            })
+        {
+            return Err(serde::de::Error::custom("invalid discovery document"));
+        }
+        Ok(Self::Server(server))
+    }
 }
 impl ServerApi {
     pub fn new(
@@ -240,6 +285,10 @@ impl ServerApi {
             return Err(SafeError::InvalidResponse.into());
         }
         Ok(result)
+    }
+    pub async fn server_info(&self) -> Result<DiscoveryDocument, ApiFailure> {
+        self.execute("get_server_info", None, &[], None, false)
+            .await
     }
     pub async fn readiness(&self) -> Result<ReadinessResponse, ApiFailure> {
         self.execute("get_readiness", None, &[], None, true).await

@@ -93,6 +93,21 @@ async fn exact_scope_uses_one_encoded_path_segment() {
             .starts_with("GET /proxy/%E4%B8%AD%E6%96%87/v1/scopes/scope%2F%E4%B8%AD%E6%96%87%3Fx ")
     );
 }
+
+#[tokio::test]
+async fn discovery_rejects_duplicate_deployment_identity_fields() {
+    let (api, request) = fixture(200, r#"{"schema_version":{"major":1,"minor":0},"product":"powercontext","server_id":"old","server_id":"new","package_version":"1.4.0","api_contract_version":{"major":1,"minor":4},"feature_contracts":{}}"#).await;
+    assert_eq!(
+        api.server_info().await.err().unwrap().code,
+        SafeError::InvalidResponse
+    );
+    assert!(
+        request
+            .await
+            .unwrap()
+            .starts_with("GET /proxy/%E4%B8%AD%E6%96%87/v1/server-info ")
+    );
+}
 #[tokio::test]
 async fn readiness_failure_is_a_fact_and_write_failure_keeps_dispatch_uncertainty() {
     let (api, request) = fixture(

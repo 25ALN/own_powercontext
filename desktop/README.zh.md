@@ -74,9 +74,21 @@ pnpm --dir desktop desktop:dev
 
 连接配置存放在应用数据目录，JSON 不包含秘密。重启后需要重新验证连接和选择范围；仅会话凭据不保留。移除连接仅移除此桌面的配置和自有凭据，不停止 Server 或删除业务数据。
 
+## 原生发现结果
+
+连接检查通过现有原生传输调用公开的 `get_server_info`。`CheckReport.discovery` 返回 `supported`、`missing`、`denied`、`unavailable`、`invalid` 或 `incompatible`，并包含观察到的 Server 元数据、安全错误，以及逐项操作的 `qualified`／`unsupported`／`unverified` 状态和原因。兼容的发现协议 minor 版本可增加响应及其嵌套版本、功能对象的可选字段。
+
+操作资格仍要求明确选择与当前契约匹配的原生验证记录。仅发现接口的 404 允许沿用该记录已独立验证的旧版操作；401、403、503、无效响应、不兼容产品或必要 major 版本不会触发旧版回退。缺失功能组、不支持的功能版本和缺失 operation ID 分别限制受影响的操作。Artifact 精确读取需要独立资格，不能从 `memory.explicit` 推断。发现元数据不授予权限，也不证明远端二进制身份。
+
+当前连接检查和匿名身份复核仍会调用 readiness。检查结果记录观察到的 `server_id`；这不代表已经实现部署身份隔离或显式 readiness 分离。
+
+连接页分别展示发现状态和兼容性结论，说明访问被拒绝、暂时不可用时的恢复方法，以及产品或 major 版本不兼容的原因。发现检查失败时业务操作保持不可用，但不会删除已选择的资格记录。修正连接或服务后，须明确重新检查连接，重新判定操作可用性。仅发现接口的 404 适用上述已验证旧版策略。
+
+保存、搜索、精确版本读取、范围查找和范围选择分别要求 `supportedOperations` 包含各自的操作，总体兼容性结论不会启用其他操作。不可用的操作会说明功能缺失、功能版本不兼容、未声明操作支持或缺少独立验证记录的原因。其他独立支持的操作仍可使用，总览也逐项展示记忆功能的可用性。原生层在请求时执行的授权和兼容性检查仍是最终依据。
+
 工程边界：
 
-- OpenAPI 自动派生的 TypeScript schema 和十项 operation 映射，包含契约摘要及漂移检查。
+- OpenAPI 自动派生的 TypeScript schema 和十一项 operation 映射，包含契约摘要及漂移检查。
 - `desktop/openapitools.json` 固定 OpenAPI Generator CLI 版本，Rust 模板位于 `desktop/scripts/openapi-generator/rust/`。修改 OpenAPI 合同或模板后，在仓库根目录执行 `pnpm --dir desktop generate`，不要手动编辑生成的 `src-tauri/src/transport/wire.rs`；CI 通过 `pnpm --dir desktop generate:check` 检查生成结果是否漂移。
 - Rust 自动派生的 IPC 类型与安全错误；凭据只写请求必须显式选择持久化或仅会话，成功回执只含存储模式，不含秘密或凭据标识。
 - Windows Credential Manager 原生适配器；保存失败直接报错，只有显式选择才采用仅会话内存。秘密类型不支持序列化，不实现 Debug。
@@ -133,7 +145,7 @@ Windows GitHub Actions 会构建未签名安装包，安装到临时中文路径
 
 从早期预览版升级后，请打开「连接」并选中已保存的连接。与当前 API 契约匹配的配置显示在「此 Desktop 构建可用」中；先核对已测试的 Server 构建与实际部署，再明确选择、保存、检查并使用该连接。新连接默认不选择兼容配置。
 
-历史配置显示为不可选择的记录。已保存的不匹配或不可用配置仍会显示并说明原因，须明确替换，不会静默升级。对于已资格化的当前 Server 源码，明确选择 `sqlite-atomic-1da99747-v1` 并在选取范围前检查连接；该记录的契约摘要与本构建的打包契约匹配，而 `sqlite-atomic-d9a78567-v1`、`sqlite-atomic-caf2a35a-v1`、`sqlite-atomic-683e2db0-v1` 与 `sqlite-atomic-cab054db-v1` 只资格化各自对应 Server 源码的部署，并不匹配打包契约。已记录的 Server 源码和 wheel 身份必须与实际部署一致。独立验证的 `ci-fixtures` 构建仅用于临时验收测试。历史资格证据和剩余要求见[验证说明](VALIDATION.md)。
+历史配置显示为不可选择的记录。已保存的不匹配或不可用配置仍会显示并说明原因，须明确替换，不会静默升级。请按实际部署的 Server 源码选择 `sqlite-atomic-1da99747-v1`，或为 `c535d816` 源码选择 `sqlite-atomic-c535d816-v1`，检查连接后再选择范围。两项记录均匹配本构建的契约，并保留各自独立验证的操作集合；历史配置仍保留各自的 Server 源码和契约身份。已记录的 Server 源码和 wheel 身份必须与实际部署一致。独立验证的 `ci-fixtures` 构建仅用于临时验收测试。历史资格证据和剩余要求见[验证说明](VALIDATION.md)。
 
 ## 在 macOS 上构建
 

@@ -73,7 +73,9 @@ async fn fixture() -> Fixture {
                 }
                 let text = String::from_utf8(request).unwrap();
                 let path = text.split_whitespace().nth(1).unwrap();
-                let (status, body) = if path.contains("/access/me") {
+                let (status, body) = if path.contains("/server-info") {
+                    (404, r#"{}"#)
+                } else if path.contains("/access/me") {
                     if changed.load(Ordering::Relaxed) {
                         (401, r#"{}"#)
                     } else {

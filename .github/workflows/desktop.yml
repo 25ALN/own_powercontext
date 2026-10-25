@@ -180,7 +180,19 @@ jobs:
       - name: Verify native Keychain across processes
         run: cargo run --locked --manifest-path src-tauri/Cargo.toml --example credential_probe
       - name: Build unsigned macOS app and DMG
-        run: pnpm desktop:build
+        run: |
+          mkdir -p .artifacts
+          set -o pipefail
+          pnpm tauri build --ci --verbose -- --locked 2>&1 | tee .artifacts/macos-build.log
+      - name: Upload failed macOS build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desktop-macos-${{ matrix.runner }}-build-diagnostics
+          path: |
+            desktop/.artifacts/macos-build.log
+            desktop/src-tauri/target/release/bundle/dmg/bundle_dmg.sh
+          if-no-files-found: warn
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: desktop-macos-${{ matrix.runner }}-internal-unsigned

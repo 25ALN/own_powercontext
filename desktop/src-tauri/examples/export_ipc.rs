@@ -16,6 +16,10 @@
 
 use powercontext_desktop::{
     connections::{
+        discovery::{
+            CompatibilityReason, CompatibilityStatus, DiscoveryResult, DiscoveryStatus,
+            OperationCompatibility,
+        },
         profiles::{Authentication, CredentialState, ProfileInput, ProfileView},
         session::{
             ActiveView, CheckReport, CompatibilityProfile, DesktopState, Fact, MemoryContext,
@@ -59,6 +63,11 @@ fn main() {
         ProfileInput::decl(&config),
         CredentialState::decl(&config),
         Fact::<String>::decl(&config),
+        DiscoveryStatus::decl(&config),
+        CompatibilityReason::decl(&config),
+        CompatibilityStatus::decl(&config),
+        OperationCompatibility::decl(&config),
+        DiscoveryResult::decl(&config),
         CheckReport::decl(&config),
         CompatibilityProfile::decl(&config),
         ActiveView::decl(&config),

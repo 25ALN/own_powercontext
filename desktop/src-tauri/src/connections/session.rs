@@ -15,6 +15,7 @@
  */
 
 //! Native-owned connection and Scope context. Viewing a profile never activates it.
+use super::discovery::DiscoveryResult;
 use super::profiles::{ProfileInput, ProfileRepository, ProfileView};
 use crate::{
     error::SafeError,
@@ -61,6 +62,9 @@ pub struct CheckReport {
     pub compatibility_verified: bool,
     pub anonymous_access: bool,
     pub supported_operations: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub discovery: Option<DiscoveryResult>,
 }
 #[derive(Clone, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -311,6 +315,8 @@ impl ConnectionManager {
             )
         };
         let report = Self::cancellable(&mut cancelled, async {
+            // Discovery is separate from the bounded observation batch (four transport slots).
+            let discovery = api.server_info().await;
             let (live, ready, identity, capabilities) = tokio::join!(
                 api.live(),
                 api.readiness(),
@@ -338,6 +344,8 @@ impl ConnectionManager {
                         .as_ref()
                         .is_err_and(|e| e.code == SafeError::InvalidResponse)
             });
+            let discovery = DiscoveryResult::assess(discovery, compatible);
+            let supported_operations = discovery.supported_operations();
             Ok(CheckReport {
                 anonymous_access,
                 connection_id: id.into(),
@@ -350,8 +358,9 @@ impl ConnectionManager {
                 readiness: ready.into(),
                 identity: identity.into(),
                 capabilities: capabilities.into(),
-                compatibility_verified: compatible.is_some(),
-                supported_operations: compatible.map(|c| c.operations.clone()).unwrap_or_default(),
+                compatibility_verified: !supported_operations.is_empty(),
+                supported_operations,
+                discovery: Some(discovery),
             })
         })
         .await?;

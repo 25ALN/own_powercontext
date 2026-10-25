@@ -107,6 +107,7 @@ async fn setup_response(response: serde_json::Value) -> Fixture {
                     .unwrap()
                     .to_owned();
                 let (status, value) = match path.as_str() {
+                    "/v1/server-info" => (404, serde_json::json!({})),
                     "/v1/access/me" => (
                         503,
                         serde_json::json!({"error":{"code":"runtime_not_ready"}}),
