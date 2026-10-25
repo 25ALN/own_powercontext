@@ -7,7 +7,7 @@ Python environment and build configuration.
 | Directory | Purpose | Suites |
 | --- | --- | --- |
 | [`coding/`](coding/README.md) | Coding-task completion and continuation quality | [SWE-bench Pro](coding/swebench_pro/README.md), [Work continuity](coding/work_continuity/README.md) |
-| [`memory/`](memory/README.md) | Memory retrieval, answer quality, and write-gate evidence | [LoCoMo](memory/locomo/README.md), [LoCoMo-Plus](memory/locomo_plus/README.md), [LongMemEval-V2](memory/longmemeval_v2/README.md), [Memory write gate](memory/write_gate/README.md) |
+| [`memory/`](memory/README.md) | Memory extraction, retrieval, answer quality, and write-gate evidence | [Atomic extraction](memory/atomic_extraction/README.md), [LoCoMo](memory/locomo/README.md), [LoCoMo-Plus](memory/locomo_plus/README.md), [LongMemEval-V2](memory/longmemeval_v2/README.md), [Memory write gate](memory/write_gate/README.md) |
 | [`performance/`](performance/README.md) | Load, latency, storage growth, and capacity limits | None yet |
 | [`skills/`](skills/README.md) | Agent instruction routing and authorization regressions | [Claude Code skill-up](skills/skill-up/README.md), [ZCode native CLI](zcode_guidance/README.md) |
 | [`artifact_evolution/`](artifact_evolution/README.md) | Evaluation-owned Dream recording and faithful replay | [Artifact evolution](artifact_evolution/README.md) |
@@ -33,6 +33,7 @@ evaluation/
 │       ├── locks/
 │       └── docs/
 ├── memory/
+│   ├── atomic_extraction/
 │   ├── locomo/
 │   ├── locomo_plus/
 │   └── longmemeval_v2/
@@ -63,6 +64,7 @@ uv run --project evaluation work-continuity --help
 uv run --project evaluation longmemeval-v2 --help
 
 # Memory quality: inspect a bundled, provider-free smoke plan.
+uv run python -m evaluation.memory.atomic_extraction validate
 uv run python -m evaluation.memory.locomo --help
 uv run python -m evaluation.memory.locomo_plus run \
   --dataset-file evaluation/memory/locomo_plus/dataset/locomo_plus_smoke10.json \
