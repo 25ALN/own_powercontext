@@ -737,6 +737,7 @@ def test_access_api_and_handoff_pep_enforce_exact_receiver_visibility() -> None:
                     profile["family"] for profile in principal.json()["artifact_families"] if profile["enabled"]
                 } == {
                     "atomic-memory",
+                    "image-analysis",
                     "handoff",
                     "memory",
                     "experience",

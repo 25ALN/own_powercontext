@@ -383,7 +383,7 @@ def main():
     for path, content in build().items():
         if args.check:
             if not path.is_file() or path.read_text(encoding="utf-8") != content:
-                stale.append(str(path.relative_to(ROOT)))
+                stale.append(path.relative_to(ROOT).as_posix())
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8", newline="\n")

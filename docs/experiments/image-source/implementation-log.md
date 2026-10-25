@@ -5,6 +5,33 @@ description: 按阶段记录目标、实际变更、验证证据、限制和后�
 
 # 图片 Source 实验功能实施过程记录
 
+## 2026-10-25：PR #1956 新 head CI 修复
+
+目标：逐项核对 74dada2685f979a6fa52a063c93bfb844a5cb19c 的 Main、Desktop、E2E harness 和 Skill guidance 失败日志，在相应环境复现并修复真实问题，保留测试语义和支持边界，完成检查后更新同一 PR。沿用隔离 worktree、临时数据库和测试端口，不操作既有服务或私有模型配置。
+
+### 失败归因与修复
+
+74dada26 的 14 个失败 job 归并为四类，均由本轮 RFC 架构提交引起：
+
+| 失败集合 | 直接原因 | 修复 |
+| --- | --- | --- |
+| Main 的四个 Python 版本 unit/e2e，以及 OceanBase acceptance | 新增 image-analysis 及图片 Source 读取能力后，健康检查、Access、SDK 的精确能力列表仍为旧值 | 更新完整列表的精确断言，保留权限、降级、写入和回读语义；没有改成宽松包含检查 |
+| 三个平台的 Desktop | OpenAPI/Rust wire 已更新，独立 IPC 导出未重新生成 | 用 export_ipc 官方程序重新生成并执行原 --check |
+| Dify tools | 选中的 OpenAPI 组件与七个生成产物失配 | 通过 generate_contract.py 重新生成声明和 contract.json |
+| Skill guidance | OpenAPI 参数枚举扩展后，共享中立工具参数参考仍为旧值 | 用 validate_suite.py --write-tool-contract 更新参考，不改 Skill pin、工具目录或五个用例的控制规则 |
+
+本地进一步发现 Windows 的 Dify 生成器诊断／测试快照键使用平台分隔符，而引用使用 POSIX 相对路径。6b976859 主干已有相同 str(relative_path) 实现，故这是原有的工具兼容 bug，已统一为 as_posix 并保留原漂移拒绝断言，不需另开 issue 才能修复。OceanBase 此轮没有表现出存储故障；前置断言失败导致未生成 replay evidence，空证据扫描是后续失败，不是另一个已证实的后端 bug。
+
+### 本地验证
+
+- 修改前用实际 HTTP / SQLite 复现相同的 11 个 unit 失败；修改后运行 tests/test_server.py、tests/test_access_http.py、tests/e2e/test_runtime_server.py、tests/e2e/test_candidate_review.py：100 passed、4 个未配置后端的环境跳过。
+- 官方 cargo export_ipc --check 先复现漂移，重新导出后通过；Desktop typecheck 和 98 项 UI 测试通过。没有更改 OpenAPI 或 Rust wire，既有协议资格摘要仍适用。
+- Dify generate_requirements / generate_contract 检查、独立 Python 3.12 SDK 的 Ruff / ty 通过。固定 Dify 1.17.1 宿主 8387590a、daemon 1310a18b 与实际 Go 探针后，完整 SDK 集合 82 passed；真实 Server / SQLite / SDK 子进程 HTTP 链路 3 passed。宿主兼容探针执行固定源码的帮助函数与 daemon 序列化，不等同于完整 Dify 服务部署。
+- Skill pin、validate_suite 通过，28 项 Python 回归通过；使用官方 checksum 校验的 Windows skill-up 0.12.0，原生 validate 和 run.py --dry-run 的五个用例均通过，没有执行付费模型。
+- 全部非类型 pre-commit hooks、Linux 目标的全量 ty 和 diff 检查通过；Windows 原有类型诊断仍单独记录，未宣称本机全部类型检查通过。Dify SDK 的 gevent/Pydantic 警告未导致测试失败；没有把未独立复现的警告当作业务缺陷。
+- 未改动业务 Runtime、权限实现、迁移格式、模型预算或 CI 的测试选择。GitHub 新 head 必须重新执行完整 Python 矩阵、Dify/Skill、Desktop 与实际 OceanBase 验收后判断结果；旧 head 的通过项不冒充新 head CI 通过。
+
+
 ## 2026-10-25：RFC #1972 架构对齐实施
 
 目标阶段：依据 RFC #1972 `919d6b30b8c42bc83d38477b1379e08f09155b81` 完成共享媒体三表、image-analysis Artifact 与确定性解释发布、Supervisor 接入、Memory 逐陈述排序依据、五个公共操作、版本化迁移及兼容回读。用户明确授权实现、补齐迁移和测试，并更新 PR #1956。起点为 `9abb3628`，沿用独立 worktree 和临时数据；不操作现有服务或私有模型。

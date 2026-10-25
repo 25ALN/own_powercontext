@@ -146,6 +146,7 @@ output_schema:
           - profile
           - prompt
           - topic-memory
+          - image-analysis
         artifact_id:
           $ref: '#/definitions/Result/properties/artifact_id'
           type: string

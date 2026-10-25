@@ -100,7 +100,7 @@ _ACCESS_READINESS_CHECKS = {
     "access_provider": "disabled",
     "access_resource_kinds": "server,scope,artifact",
     "access_artifact_families": (
-        "atomic-memory:enabled,experience:enabled,handoff:enabled,memory:enabled,profile:enabled,prompt:enabled,skill:enabled"
+        "atomic-memory:enabled,experience:enabled,handoff:enabled,image-analysis:enabled,memory:enabled,profile:enabled,prompt:enabled,skill:enabled"
     ),
 }
 EMBEDDING_PROFILE = EmbeddingProfile(
@@ -258,7 +258,13 @@ def test_server_databases_share_source_to_memory_search_behavior(
             "artifact_processing_supervisor": "disabled",
             **_ACCESS_READINESS_CHECKS,
         }
-        assert capabilities.source_types == ["content"]
+        assert capabilities.source_types == [
+            "content",
+            "image.original",
+            "image.interpretation",
+            "experimental.image.original",
+            "experimental.image.analysis",
+        ]
         assert ref.family == "atomic-memory"
         assert ref.family in capabilities.artifact_families
         assert "memory" in capabilities.artifact_families
@@ -620,6 +626,7 @@ def test_sdk_handoff_lifecycle_reaches_generation_and_persistence(tmp_path: Path
             "memory",
             "atomic-memory",
             "topic-memory",
+            "image-analysis",
             "experience",
             "skill",
             "handoff",

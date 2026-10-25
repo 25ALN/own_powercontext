@@ -919,7 +919,8 @@
           "handoff",
           "profile",
           "prompt",
-          "topic-memory"
+          "topic-memory",
+          "image-analysis"
         ]
       },
       "ArtifactReference": {
@@ -1289,6 +1290,20 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128
+          },
+          "ordering": {
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MemoryOrderingSupport"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "text": {
             "type": "string",
@@ -1972,6 +1987,41 @@
             "$ref": "#/components/schemas/ErrorDetail"
           }
         }
+      },
+      "EvidenceAnchor": {
+        "additionalProperties": false,
+        "description": "Repository-validated original position, never a model-supplied timestamp.",
+        "properties": {
+          "scope_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceTypeReference"
+          },
+          "journal_position": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "scope_id",
+          "source",
+          "journal_position"
+        ],
+        "type": "object"
       },
       "ExperienceArtifact": {
         "type": "object",
@@ -3177,6 +3227,35 @@
           }
         }
       },
+      "MemoryOrderingSupport": {
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "default": "powercontext.memory-ordering.v1",
+            "type": "string",
+            "enum": [
+              "powercontext.memory-ordering.v1"
+            ]
+          },
+          "content_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryStatementSupport"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_digest",
+          "statements"
+        ],
+        "type": "object"
+      },
       "MemorySearchMode": {
         "type": "string",
         "enum": [
@@ -3185,6 +3264,51 @@
           "vector",
           "hybrid"
         ]
+      },
+      "MemoryStatementSupport": {
+        "additionalProperties": false,
+        "description": "Exact retained text and applicability, associated with its own evidence.",
+        "properties": {
+          "statement": {
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string"
+          },
+          "applicability": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StatementEvidence"
+            },
+            "maxItems": 16,
+            "type": "array"
+          }
+        },
+        "required": [
+          "statement"
+        ],
+        "type": "object"
       },
       "PrepareContextRequest": {
         "type": "object",
@@ -4450,6 +4574,69 @@
             "description": "Source identity as accepted at ingestion, including Unicode and interior spaces."
           }
         }
+      },
+      "StatementEvidence": {
+        "additionalProperties": false,
+        "description": "An exact supporting input, with either a verified origin or unknown basis.",
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceTypeReference"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifact": {
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ArtifactReference"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "via_artifact": {
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ArtifactReference"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EvidenceAnchor"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
       },
       "TagFilter": {
         "type": "object",
