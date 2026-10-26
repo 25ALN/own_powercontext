@@ -22,7 +22,7 @@ from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from hashlib import sha256
-from typing import TYPE_CHECKING, Literal, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
 from sqlalchemy import func, literal, select, true, tuple_, update
 from sqlalchemy.exc import OperationalError
@@ -580,25 +580,22 @@ class AtomicMemorySourceWindowProcessor:
                 read = await self.application.service.authorize_comparison_hit(
                     connection, scope_id, by_id[hit.artifact_ref.artifact_id], hit, context
                 )
-                for hit, record in zip(allowed, records, strict=True):
-                    try:
-                        await self.application.security.authorize(connection, scope_id, context, "write", record.ref)
-                    except AccessDeniedError:
-                        continue
-                    if (
-                        record.ref != hit.artifact_ref
-                        or record.state.state_version != hit.state_version
-                        or record.state.state is not AtomicMemoryStateValue.ACTIVE
-                        or record.artifact.content.kind != hit.kind
-                        or record.artifact.content.text != hit.text
-                    ):
-                        _conflict("Related memory changed before comparison")
-
-                    content = record.artifact.content.without_creation()
-
-                    supported = AtomicMemoryArtifactEvidence(
-                        evidence_id=f"artifact:{record.ref.artifact_id}@{record.ref.revision}",
-                        artifact_ref=record.ref,
+            except AccessDeniedError:
+                continue
+            content = cast(
+                AtomicMemoryContent,
+                self.application.artifacts.decode_content(by_id[hit.artifact_ref.artifact_id]),
+            ).without_creation()
+            supported = AtomicMemoryArtifactEvidence(
+                evidence_id=f"artifact:{read.ref.artifact_id}@{read.ref.revision}",
+                artifact_ref=read.ref,
+                content=content,
+            )
+            artifacts[(read.ref.family, read.ref.artifact_id, read.ref.revision)] = read.ref
+            recalled.append(
+                workset.add(
+                    AtomicMemoryWorkingItem(
+                        key=f"memory:{hit.artifact_ref.artifact_id}",
                         content=content,
                         origins=(read,),
                         evidence=(supported,),
