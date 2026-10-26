@@ -160,14 +160,16 @@ Agent 诊断见[各自的集成文档](../integrations/index.md)；Server 状态
 
 ## 更新或替换安装
 
-升级已有部署前，先备份数据库和配置。1.1.0 会在 Server 启动时升级旧标签表约束，以支持 Topic Memory 标签。
-先停止旧 Server 实例，再启动一个升级后的实例，待结构升级完成后再启动其他实例。对于 1.0.0 之前的数据库，
-如果尚未完成[Artifact 处理迁移](../operate/artifact-processing-migration.md)，还需要先执行该迁移。
-升级到 1.4.0 时，已有集合式 Memory 数据库还需完成[Atomic Memory 离线迁移](../operate/atomic-memory-migration.md)。
-先完成所需的 Artifact 处理迁移，再停止所有写入进程，执行 Atomic Memory 迁移并验证 `ready: true` 后启动新服务。
-Server、客户端和 Agent 集成需一起升级。Dashboard 需要显式启用，本地使用可选择静态 Bearer 认证，
-见[部署 Server](../operate/deploy-server.md)；远程明文 HTTP 连接需要客户端明确同意，
-见[连接远程 Server](../operate/connect-remote-server.md)。
+<!-- upgrade-support:start -->
+1.3.0 升级必须通过 SQLite、seekDB 和 OceanBase 的完整 Server 验收。当前迁移路径尚未验证，请勿升级已有数据库。
+<!-- upgrade-support:end -->
+
+已有部署应保持当前可用版本，等待来源版本及后端具备已验收的升级路径。试用新建部署时，请使用独立程序环境、
+数据库位置和端口。替换程序包不会完成数据库迁移；备份也不能使不受支持的迁移变为可用。
+
+支持声明由发布矩阵和安装包验收共同检查，详见[准备发布](../../development/releasing.md)。
+[Artifact 处理迁移](../operate/artifact-processing-migration.md)和
+[Atomic Memory 迁移](../operate/atomic-memory-migration.md)各自的验证结果不代表完整 Server 就绪。
 
 升级已有数据库前，请先检查 [Dream 协调升级要求](../workflows/review-dream-revisions.md#协调升级)。
 统一 Candidate 路由将 `/v1/artifact-candidates/*` 替换为 `/v1/candidates/*`，不提供别名，Dream 客户端要求契约 2。
@@ -175,20 +177,21 @@ Server、客户端和 Agent 集成需一起升级。Dashboard 需要显式启用
 Server 升级路径；Atomic Memory 验证通过也不代表整体迁移就绪。不要绕过 `migration_required` 或
 `migration_framework_not_ready`。
 
-升级到 1.4.0：
+安装 1.4.0 到独立环境以试用新建部署：
 
 ```bash
-uv tool install --force "powercontext[cli,server]==1.4.0"
+uv venv /path/to/powercontext-preview
+uv pip install --python /path/to/powercontext-preview/bin/python "powercontext[cli,server]==1.4.0"
 ```
 
-使用其他 Git ref 替换现有工具：
+在独立环境安装其他 Git ref：
 
 ```bash
-uv tool install --force "powercontext[cli,server] @ git+https://github.com/oceanbase/powercontext.git@<ref>"
+uv pip install --python /path/to/powercontext-preview/bin/python "powercontext[cli,server] @ git+https://github.com/oceanbase/powercontext.git@<ref>"
 ```
 
-按[各自的集成文档](../integrations/index.md)更新已安装宿主，并使用同一个 ref。更新后重启 Server，再开启新的宿主会话。只要没有修改
-`POWERCONTEXT_HOME` 或数据库 URL，现有 SQLite 数据会继续保留。
+连接新建部署的客户端及 Agent 集成应使用匹配的 ref。保留原部署的数据库位置和配置，不要用原数据库测试新版启动。
+Windows 的虚拟环境解释器位于 `Scripts/python.exe`。
 
 ## 为 Python 项目安装角色
 

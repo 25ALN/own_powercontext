@@ -174,17 +174,18 @@ For a long-running process, Docker, authentication, or remote access, continue w
 
 ## Update or replace an installation
 
-Before upgrading an existing deployment, back up its database and configuration. Version 1.1.0 upgrades legacy
-tag-table constraints during Server startup to support Topic Memory tags. Stop the old Server instances and start
-one upgraded instance first so the schema upgrade completes before other instances connect. Databases from before
-1.0.0 also need the [Artifact processing migration](../operate/artifact-processing-migration.md) if it has not already
-been completed. Existing collection-based Memory databases also require the [offline Atomic Memory migration](../operate/atomic-memory-migration.md)
-for existing collection databases. Complete any required Artifact processing migration first, stop all writers, then
-apply and verify the Atomic Memory migration. Start the new service only after verification returns `ready: true`.
-Upgrade the Server, clients, and Agent integrations together.
-The Dashboard must be explicitly enabled; static Bearer authentication is optional for local use. See
-[Deploy the Server](../operate/deploy-server.md). Remote plaintext HTTP connections require explicit client consent;
-see [Connect to a remote Server](../operate/connect-remote-server.md).
+<!-- upgrade-support:start -->
+Upgrades from 1.3.0 require passing full Server acceptance on SQLite, seekDB and OceanBase. This migration path is not yet verified; do not upgrade existing databases.
+<!-- upgrade-support:end -->
+
+Keep existing deployments on their working version until their source version and backend have an accepted upgrade
+path. To evaluate a fresh installation, use a separate program environment, database location, and port. Replacing
+the installed package does not migrate its database. Backups do not make an unsupported migration supported.
+
+The support declaration is checked against the release matrix and installed-artifact acceptance; see
+[Preparing a release](../../development/releasing.md). Domain-specific
+[Processing](../operate/artifact-processing-migration.md) and
+[Atomic Memory](../operate/atomic-memory-migration.md) maintenance guides do not establish full Server readiness.
 
 Review the [Dream coordinated upgrade requirements](../workflows/review-dream-revisions.md#coordinated-upgrade)
 before upgrading an existing database. The unified Candidate routes replace `/v1/artifact-candidates/*` with
@@ -193,21 +194,22 @@ migration after unfinished runs have drained. The current unified migration bund
 it does not provide a complete production Server upgrade path. Atomic Memory verification alone does not establish
 that readiness. Do not bypass `migration_required` or `migration_framework_not_ready`.
 
-To upgrade to 1.4.0:
+To install 1.4.0 in a separate environment for a fresh deployment:
 
 ```bash
-uv tool install --force "powercontext[cli,server]==1.4.0"
+uv venv /path/to/powercontext-preview
+uv pip install --python /path/to/powercontext-preview/bin/python "powercontext[cli,server]==1.4.0"
 ```
 
-To replace the installed tool with another Git ref:
+To install another Git ref in the separate environment:
 
 ```bash
-uv tool install --force "powercontext[cli,server] @ git+https://github.com/oceanbase/powercontext.git@<ref>"
+uv pip install --python /path/to/powercontext-preview/bin/python "powercontext[cli,server] @ git+https://github.com/oceanbase/powercontext.git@<ref>"
 ```
 
-Update each installed host using its [integration guide](../integrations/index.md) and the same ref. Restart the Server and open a new host session
-after updating. Existing SQLite data remains in the user data directory unless `POWERCONTEXT_HOME` or the database URL
-changes.
+Use the matching ref for clients and Agent integrations connected to the fresh deployment. Preserve the original
+deployment's database location and configuration; do not point the new Server at it as an installation check.
+On Windows, the virtual environment interpreter is at `Scripts/python.exe`.
 
 ## Install a Python role
 

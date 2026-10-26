@@ -1,0 +1,31 @@
+{
+  "format": 2,
+  "target_version": "1.4.0",
+  "mode": "upgrade-required",
+  "schema_review": {
+    "persistence_sha256": "e79b52302de12d33674dcbf681ae43e47246ead9072a0429ee0d9ca14ea578c2",
+    "rationale": "Full Server upgrades from 1.3.0 remain mandatory on SQLite, embedded seekDB and OceanBase. The reviewed persistence changes include pc_portable_restore_receipts and MySQL DATETIME(6) precision for artifact creation, profile policy updates, Topic Memory publication and tag assignment; the migrated database must match a fresh target database, including these objects. Batch source, artifact, Candidate, projection and authorization operations, SQLite snapshot transactions, blank-source admission and Topic Memory rejection handling require the existing data-preservation and authorization acceptance checks. Arithmetic CHECK reflection, seekDB server identification, explicit legacy-memory owner decisions and frozen-snapshot memory budgets improve migration probing and safety but do not supply a complete Server migration chain. This review records the target persistence inputs, not successful upgrade support. The policy stays upgrade-required; publication remains blocked until the full migration integration tracked in #2154 / #2168 and all three installed-release acceptance cases pass."
+  },
+  "cases": [],
+  "automatic_sources": {
+    "strategy": "fixed-version",
+    "source_version": "1.3.0",
+    "profiles": [
+      {
+        "backend": "sqlite",
+        "configuration": "full-server-no-vector",
+        "suite": "tests/release_upgrades/test_full_server.py"
+      },
+      {
+        "backend": "seekdb",
+        "configuration": "full-server-no-vector",
+        "suite": "tests/release_upgrades/test_full_server.py"
+      },
+      {
+        "backend": "oceanbase",
+        "configuration": "full-server-no-vector",
+        "suite": "tests/release_upgrades/test_full_server.py"
+      }
+    ]
+  }
+}

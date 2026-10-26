@@ -14,7 +14,10 @@ concurrency:
 jobs:
   release-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 90
+    env:
+      PC_UPGRADE_OCEANBASE_URL: mysql+aoceanbase://root%40test:powercontext-e2e@127.0.0.1:2881/pc_upgrade_test?charset=utf8mb4
+      PC_UPGRADE_OCEANBASE_FRESH_URL: mysql+aoceanbase://root%40test:powercontext-e2e@127.0.0.1:2881/pc_upgrade_fresh?charset=utf8mb4
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -74,11 +77,40 @@ jobs:
           uv build --out-dir dist
           uvx --from twine twine check dist/*
 
+      - name: Start the isolated upgrade OceanBase environment
+        uses: ./.github/actions/setup-upgrade-oceanbase
+
+      - name: Gate upgrade claims on installed release acceptance
+        run: >-
+          uv run python scripts/run_upgrade_release_gate.py
+          --release --release-event "$GITHUB_EVENT_PATH"
+          --output "$RUNNER_TEMP/upgrade-release-evidence"
+
+      - name: Preserve OceanBase diagnostics
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/upgrade-release-evidence"
+          docker logs upgrade-oceanbase > "$RUNNER_TEMP/upgrade-release-evidence/oceanbase.log" 2>&1 || true
+          docker inspect --format '{{json .State}}' upgrade-oceanbase \
+            > "$RUNNER_TEMP/upgrade-release-evidence/oceanbase-state.json" 2>&1 || true
+      - name: Stop the isolated upgrade OceanBase environment
+        if: always()
+        run: docker rm --force upgrade-oceanbase
+
+      - name: Preserve upgrade acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: upgrade-release-evidence
+          path: ${{ runner.temp }}/upgrade-release-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload release distributions
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-dists
-          path: dist/*
+          path: ${{ runner.temp }}/upgrade-release-evidence/validated-dist/*
           if-no-files-found: error
           retention-days: 30
 

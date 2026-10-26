@@ -161,6 +161,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    # Installed-release suites run only through the mandatory artifact gate.
+    # The gate uses --confcutdir to exclude this repository conftest entirely.
+    if collection_path.resolve() == (Path(__file__).parent / "release_upgrades").resolve():
+        return True
     # Alembic executes env.py as migration configuration; doctest collection
     # must not import it as a test module.
     if collection_path.resolve() == _DATABASE_MIGRATION_ENV.resolve():
