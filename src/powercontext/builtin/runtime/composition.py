@@ -769,8 +769,18 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
             )
         else:
             entrypoint = partial(run_family_worker, FamilyWorkerSpec(config=config, worker_security=worker_security))
+        threshold = {
+            "memory": config.runtime.memory_source_count_threshold,
+            "topic-memory": config.runtime.topic_memory_source_count_threshold,
+        }.get(family)
         interval = None if family == "profile" else automatic[family]
+        gate_threshold = threshold
         binding = canonical[family]
+        pending_provider = (
+            None
+            if family == "skill"
+            else SourceProcessingPendingProvider(contexts.database, binding, family, gate_threshold)
+        )
         configured.append(
             ArtifactProcessingBinding(
                 binding_name=binding,
@@ -783,10 +793,12 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
                 if family == "profile" and config.runtime.profile_schedule_enabled
                 else None,
                 timezone=config.runtime.profile_timezone if family == "profile" else "Asia/Shanghai",
-                pending_provider=None
-                if family == "skill"
-                else SourceProcessingPendingProvider(contexts.database, binding, family),
+                pending_provider=pending_provider,
                 automatic_scope_filter=enabled_profile_scopes if family == "profile" else None,
+                automatic_count_trigger=gate_threshold is not None,
+                automatic_count_trigger_filter=pending_provider.eligible_source_count_scopes
+                if gate_threshold is not None and pending_provider is not None
+                else None,
             )
         )
     _validate_processing_registrations(configured)
