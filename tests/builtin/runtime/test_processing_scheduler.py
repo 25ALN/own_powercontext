@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import Counter
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -67,6 +67,10 @@ async def _request(database, binding, scope, *, dirty=True, requested=True):
 async def _intent(database, binding, scope):
     async with database.transaction() as connection:
         return await ArtifactProcessingIntentRepository().load(connection, scope, binding)
+
+
+async def _count_filter(_connection, scopes, /):
+    return frozenset(scope for scope in scopes if scope == "qualified")
 
 
 class _Launcher:
@@ -312,6 +316,69 @@ def test_automatic_scan_is_bounded_and_excludes_new_registration_until_next_sche
                 assert {work.scope_id for work in launcher.assignments} == {"a", "b", "c", "d", "e"}
                 assert (await _intent(profile.database, "memory-binding", "late")).requested_generation == 0
                 assert all(options["limit"] <= 2 for _, options in observed.scans)
+
+    asyncio.run(scenario())
+
+
+def test_count_trigger_admits_qualified_scope_before_schedule_is_due(tmp_path):
+    async def scenario():
+        async with _profile(tmp_path, "count-trigger") as profile:
+            for scope in ("below-threshold", "qualified"):
+                await _request(profile.database, "memory-binding", scope, requested=False)
+            async with profile.database.transaction() as connection:
+                states = ArtifactProcessingBindingStateRepository()
+                await states.start_scan(connection, "memory-binding", datetime.now(UTC))
+                await states.finish_scan(connection, "memory-binding")
+
+            launcher = _Launcher(profile.database)
+            async with ArtifactProcessingSupervisor(
+                database=profile.database,
+                bindings=(
+                    ArtifactProcessingBinding(
+                        "memory-binding",
+                        "memory",
+                        launcher,
+                        automatic_processing_interval=timedelta(hours=1),
+                        automatic_count_trigger=True,
+                        automatic_count_trigger_filter=_count_filter,
+                    ),
+                ),
+                lease_mode="single-process",
+            ):
+                await _wait(lambda: bool(launcher.assignments))
+                await _wait(lambda: launcher.assignments[0].scope_id == "qualified")
+                await asyncio.sleep(0.05)
+                assert [work.scope_id for work in launcher.assignments] == ["qualified"]
+                assert (await _intent(profile.database, "memory-binding", "below-threshold")).requested_generation == 0
+
+    asyncio.run(scenario())
+
+
+def test_due_schedule_admits_scope_even_when_count_trigger_filter_rejects_it(tmp_path):
+    async def scenario():
+        async with _profile(tmp_path, "count-trigger-schedule-or") as profile:
+            await _request(profile.database, "memory-binding", "below-threshold", requested=False)
+            launcher = _Launcher(profile.database)
+
+            async def reject_all(_connection, _scopes, /):
+                return frozenset()
+
+            async with ArtifactProcessingSupervisor(
+                database=profile.database,
+                bindings=(
+                    ArtifactProcessingBinding(
+                        "memory-binding",
+                        "memory",
+                        launcher,
+                        automatic_processing_interval=timedelta(hours=1),
+                        automatic_count_trigger=True,
+                        automatic_count_trigger_filter=reject_all,
+                    ),
+                ),
+                lease_mode="single-process",
+            ):
+                await _wait(lambda: bool(launcher.assignments))
+                assert launcher.assignments[0].scope_id == "below-threshold"
 
     asyncio.run(scenario())
 

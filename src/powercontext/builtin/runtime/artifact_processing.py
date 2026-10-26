@@ -110,6 +110,7 @@ class ArtifactProcessingBinding:
     max_workers: int = 1
     worker_timeout_seconds: float = 600.0
     automatic_processing_interval: timedelta | None = None
+    automatic_count_trigger: bool = False
     cron: str | None = None
     timezone: str = "Asia/Shanghai"
     config_prefix: str | None = None
@@ -117,6 +118,9 @@ class ArtifactProcessingBinding:
     # Only automatic admission is filtered; already accepted requests retain
     # their own Worker authorization and domain completion semantics.
     automatic_scope_filter: Callable[[AsyncConnection, tuple[str, ...]], Awaitable[frozenset[str]]] | None = None
+    automatic_count_trigger_filter: Callable[
+        [AsyncConnection, tuple[str, ...]], Awaitable[frozenset[str]]
+    ] | None = None
 
     def __post_init__(self) -> None:
         if not self.binding_name or self.binding_name != self.binding_name.strip():
@@ -395,6 +399,7 @@ class _FamilyState:
     scan_after: int = 0
     scan_generation: int = 0
     scan_in_progress: bool = False
+    scan_scheduled: bool = False
     reconcile_after: str | None = None
     reconcile_complete: bool = False
     notification_at_start: int = 0
@@ -709,13 +714,18 @@ class ArtifactProcessingSupervisor:
         scan_after = state.scan_after
         scan_generation = state.scan_generation
         scan_in_progress = False
+        scan_scheduled = state.scan_scheduled
         next_schedule_at = state.next_schedule_at
         next_discovery_at = state.next_discovery_at
         admitted: list[str] = []
         async with self._database.transaction() as connection:
             await self._leases.require_fence(connection, self._require_current_fence())
             persisted = await self._binding_states.load(connection, binding.binding_name, for_update=True)
-            enabled = binding.automatic_processing_interval is not None or binding.cron is not None
+            enabled = (
+                binding.automatic_processing_interval is not None
+                or binding.cron is not None
+                or binding.automatic_count_trigger
+            )
             if not enabled:
                 if persisted is not None and persisted.scan_in_progress:
                     await self._binding_states.finish_scan(connection, binding.binding_name)
@@ -730,6 +740,13 @@ class ArtifactProcessingSupervisor:
                     if due is not None:
                         persisted = await self._binding_states.start_scan(connection, binding.binding_name, due)
                         scan_after = 0
+                        scan_scheduled = True
+                    elif binding.automatic_count_trigger:
+                        persisted = await self._binding_states.start_scan(
+                            connection, binding.binding_name, preserve_schedule_checkpoint=True
+                        )
+                        scan_after = 0
+                        scan_scheduled = False
                 if persisted is not None and persisted.scan_in_progress:
                     scan_in_progress = True
                     if scan_generation != persisted.scan_generation:
@@ -754,6 +771,8 @@ class ArtifactProcessingSupervisor:
                     eligible = frozenset(candidates)
                     if candidates and binding.automatic_scope_filter is not None:
                         eligible &= await binding.automatic_scope_filter(connection, candidates)
+                    if candidates and not scan_scheduled and binding.automatic_count_trigger_filter is not None:
+                        eligible &= await binding.automatic_count_trigger_filter(connection, candidates)
                     for row in rows:
                         # A full page of ineligible rows still advances discovery;
                         # keep their dirty Source and request counters untouched.
@@ -768,6 +787,7 @@ class ArtifactProcessingSupervisor:
                     if not scan_in_progress:
                         await self._binding_states.finish_scan(connection, binding.binding_name)
                         scan_after = 0
+                        scan_scheduled = False
                         # Starting a scan established its checkpoint, so a
                         # completed page must not restart the interval here.
                         _, next_time = _schedule_deadline(binding, persisted.last_schedule_checkpoint_at, now)
@@ -777,6 +797,7 @@ class ArtifactProcessingSupervisor:
         state.scan_after = scan_after
         state.scan_generation = scan_generation
         state.scan_in_progress = scan_in_progress
+        state.scan_scheduled = scan_scheduled
         state.next_schedule_at = next_schedule_at
         state.next_discovery_at = next_discovery_at
         for scope in admitted:
@@ -1059,6 +1080,7 @@ class ArtifactProcessingSupervisor:
             state.retries.clear()
             state.requested_after = state.scan_after = state.scan_generation = 0
             state.scan_in_progress = False
+            state.scan_scheduled = False
             state.discovery_pending = True
 
     async def _reap_unconfirmed_exits(self) -> None:
@@ -1093,6 +1115,8 @@ class ArtifactProcessingSupervisor:
                 continue
             if state.next_schedule_at is not None:
                 deadlines.append(state.next_schedule_at)
+            if state.binding.automatic_count_trigger:
+                deadlines.append(now + self._tick)
             if state.discovery_pending or state.scan_in_progress or not state.reconcile_complete or state.degraded:
                 deadlines.append(max(now, state.next_discovery_at))
         return None if not deadlines else max(0.001, min(deadlines) - now)
