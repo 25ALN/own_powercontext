@@ -588,6 +588,98 @@ def test_prepare_request_rejects_values_outside_the_runtime_contract(value: dict
         PrepareContextRequest.model_validate(value)
 
 
+def test_evidence_selection_returns_literal_query_relevant_ranges_with_complete_budget() -> None:
+    from powercontext.builtin.runtime.prepared_text import TRUST_POLICY
+
+    prefix = "Routine administrative notes. " * 40
+    hits = (
+        _hit("cobalt", prefix + "The cobalt sensor is calibrated at 37 degrees."),
+        _hit("amber", prefix + "The amber valve opens at 19 degrees."),
+    )
+    builder = PreparedContextBuilder()
+    cobalt = builder.build_scopes_result(
+        current_scope_id="scope-a",
+        request=PrepareContextRequest(query="cobalt sensor calibrated", max_bytes=1200, evidence_selection=True),
+        memory_candidates=(PreparedMemoryCandidates("scope-a", MEMORY_REF, hits),),
+    )
+    amber = builder.build_scopes_result(
+        current_scope_id="scope-a",
+        request=PrepareContextRequest(query="amber valve opens", max_bytes=1200, evidence_selection=True),
+        memory_candidates=(PreparedMemoryCandidates("scope-a", MEMORY_REF, hits),),
+    )
+
+    assert cobalt.fragments and amber.fragments
+    assert any(fragment.address.entry_id == "cobalt" and "37" in fragment.text for fragment in cobalt.fragments)
+    assert any(fragment.address.entry_id == "amber" and "19" in fragment.text for fragment in amber.fragments)
+    assert all(
+        hit.text[fragment.start : fragment.end] == fragment.text
+        for hit in hits
+        for fragment in cobalt.fragments
+        if fragment.address.entry_id == hit.entry_id
+    )
+    assert cobalt.origins == tuple(fragment.address for fragment in cobalt.fragments)
+    assert cobalt.context.content is not None
+    assert cobalt.context.content.startswith(TRUST_POLICY)
+    assert cobalt.context.content_bytes == len(cobalt.context.content.encode("utf-8")) <= 1200
+    payload = json.loads(cobalt.context.content.splitlines()[-2])
+    assert payload["trust"] == "untrusted_history"
+    item = payload["items"][0]
+    fragment = cobalt.fragments[0]
+    assert item["content"] == fragment.text
+    assert (item["start"], item["end"]) == (fragment.start, fragment.end)
+    assert item["citation"]["scope_id"] == "scope-a"
+    assert item["citation"]["memory_ref"] == MEMORY_REF.model_dump(mode="json")
+    assert item["citation"]["entry_id"] == fragment.address.entry_id
+    assert item["citation"]["entry_version_id"] == fragment.address.entry_version_id
+
+
+def test_evidence_selection_can_keep_multiple_ranges_from_one_entry() -> None:
+    text = "The cobalt sensor is calibrated at 37 degrees. The amber valve opens at 19 degrees."
+    build = PreparedContextBuilder().build_scopes_result(
+        current_scope_id="scope-a",
+        request=PrepareContextRequest(query="cobalt sensor amber valve", max_bytes=1800, evidence_selection=True),
+        memory_candidates=(PreparedMemoryCandidates("scope-a", MEMORY_REF, (_hit("both", text),)),),
+    )
+    assert len(build.fragments) == 2
+    assert all(fragment.address.entry_id == "both" for fragment in build.fragments)
+    assert all(text[fragment.start : fragment.end] == fragment.text for fragment in build.fragments)
+
+
+def test_evidence_selection_returns_empty_when_complete_citation_cannot_fit() -> None:
+    build = PreparedContextBuilder().build_scopes_result(
+        current_scope_id="scope-a",
+        request=PrepareContextRequest(query="cobalt sensor", max_bytes=512, evidence_selection=True),
+        memory_candidates=(
+            PreparedMemoryCandidates(
+                "scope-a", MEMORY_REF, (_hit("entry-" + "x" * 700, "The cobalt sensor is calibrated."),)
+            ),
+        ),
+    )
+    assert build.context.status == "empty"
+    assert build.context.content is None
+    assert build.context.content_bytes == 0
+    assert build.fragments == ()
+    assert build.origins == ()
+
+
+def test_evidence_selection_counts_unicode_and_defaults_off() -> None:
+    text = "海洋观测 station records temperatures."
+    candidates = (PreparedMemoryCandidates("scope-a", MEMORY_REF, (_hit("unicode", text),)),)
+    builder = PreparedContextBuilder()
+    ordinary = builder.build_scopes_result(
+        current_scope_id="scope-a", request=PrepareContextRequest(query="station"), memory_candidates=candidates
+    )
+    selected = builder.build_scopes_result(
+        current_scope_id="scope-a",
+        request=PrepareContextRequest(query="station", max_bytes=700, evidence_selection=True),
+        memory_candidates=candidates,
+    )
+    assert ordinary.fragments == ()
+    assert ordinary.context.content is not None and "truncated" in ordinary.context.content
+    assert selected.fragments and selected.fragments[0].text == text
+    assert selected.context.content_bytes == len(selected.context.content.encode("utf-8")) <= 700
+
+
 def test_empty_context_has_no_source_specific_status_or_content() -> None:
     prepared = PreparedContextBuilder().empty()
 
