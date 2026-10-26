@@ -238,6 +238,9 @@ def test_atomic_bulk_result_read_checks_each_resource(tmp_path):
             memory = contexts.atomic_memory.for_scope("project")
             records = await memory.get_many(ids, context=execution)
             assert tuple(record.artifact.artifact_id for record in records) == ids
+            requested = (ids[2], ids[0], ids[2], ids[1])
+            reordered = await memory.get_many(requested, context=execution)
+            assert tuple(record.artifact.artifact_id for record in reordered) == requested
             custom_provider.denied = (
                 AccessAction.ARTIFACT_READ,
                 ResourceRef.artifact("project", family="atomic-memory", artifact_id=ids[1]),
