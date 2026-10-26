@@ -17,9 +17,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from typing import Any
+
+import httpx
+import pytest
 
 from powercontext.artifacts import ArtifactRef
 from powercontext.builtin.artifacts.memory import (
+    HTTPMemoryReranker,
     LLMMemoryReranker,
     MemoryHit,
     MemoryRerankCandidate,
@@ -85,5 +91,54 @@ def test_llm_reranker_falls_back_to_coarse_order_when_no_rank_is_valid() -> None
         assert decision.selected_ranks == (1, 2)
         assert decision.discarded_rank_count == 3
         assert decision.used_fallback is True
+
+    asyncio.run(scenario())
+
+
+def test_http_reranker_batches_and_sorts_scores_globally_with_stable_ties() -> None:
+    async def scenario() -> None:
+        requests: list[dict[str, Any]] = []
+        responses = iter(
+            (
+                {"scores": [{"rank": 2, "score": 0.9}, {"rank": 1, "score": 0.1}]},
+                {"scores": [{"rank": 4, "score": 0.9}, {"rank": 3, "score": 0.95}]},
+            )
+        )
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, json=next(responses))
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            reranker = HTTPMemoryReranker("https://reranker.test/score", client=client, batch_size=2)
+            decision = await reranker.rerank("query", tuple(_hit(rank) for rank in range(1, 5)), 2)
+
+        assert [item["rank"] for request in requests for item in request["candidates"]] == [1, 2, 3, 4]
+        assert [item["text"] for request in requests for item in request["candidates"]] == [
+            "Candidate 1", "Candidate 2", "Candidate 3", "Candidate 4"
+        ]
+        assert decision.selected_ranks == (3, 2)
+        assert decision.usage.requests == 2
+
+    asyncio.run(scenario())
+
+
+def test_http_reranker_rejects_invalid_scores_and_propagates_http_errors() -> None:
+    async def scenario() -> None:
+        async def invalid_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"scores": [{"rank": 1, "score": float("nan")}]})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(invalid_handler)) as client:
+            reranker = HTTPMemoryReranker("https://reranker.test/score", client=client)
+            with pytest.raises(ValueError):
+                await reranker.rerank("query", (_hit(1),), 1)
+
+        async def error_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(error_handler)) as client:
+            reranker = HTTPMemoryReranker("https://reranker.test/score", client=client)
+            with pytest.raises(httpx.HTTPStatusError):
+                await reranker.rerank("query", (_hit(1),), 1)
 
     asyncio.run(scenario())

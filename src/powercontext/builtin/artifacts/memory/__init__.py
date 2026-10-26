@@ -95,6 +95,7 @@ from powercontext.builtin.artifacts.memory.protocols import (
 from powercontext.builtin.artifacts.memory.reranking import (
     MEMORY_RERANK_INSTRUCTIONS,
     MEMORY_RERANK_INSTRUCTIONS_VERSION,
+    HTTPMemoryReranker,
     LLMMemoryReranker,
     MemoryRerankCandidate,
     MemoryRerankDecision,
@@ -116,6 +117,7 @@ __all__ = [
     "CapabilityNotSupportedError",
     "DefaultMemoryEvidenceProjector",
     "EmbeddingProfile",
+    "HTTPMemoryReranker",
     "InvalidEmbeddingError",
     "InvalidMemoryCandidateError",
     "InvalidMemoryCitationError",
