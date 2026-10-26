@@ -141,20 +141,14 @@ fn blocks_remote_navigation_and_userinfo() {
     ] {
         assert!(!allowed_navigation(&url.parse().unwrap()), "{url}");
     }
-    // The product ships macOS and Windows origins; mock origins also cover other hosts.
-    let packaged = if cfg!(target_os = "macos") {
-        "tauri://localhost/"
-    } else {
-        "http://tauri.localhost/"
-    };
-    assert!(allowed_navigation(&packaged.parse().unwrap()));
+    assert!(allowed_navigation(&LOCAL_ORIGIN.parse().unwrap()));
     assert!(allowed_navigation(
-        &format!("{packaged}index.html").parse().unwrap()
+        &format!("{LOCAL_ORIGIN}/index.html").parse().unwrap()
     ));
-    let other_platform = if cfg!(target_os = "macos") {
-        "http://tauri.localhost"
-    } else {
+    let other_platform = if cfg!(any(windows, target_os = "android")) {
         "tauri://localhost"
+    } else {
+        "http://tauri.localhost"
     };
     assert!(!allowed_navigation(&other_platform.parse().unwrap()));
 }

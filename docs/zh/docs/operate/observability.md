@@ -14,6 +14,34 @@ description: 通过日志定位请求，并查看 Server 指标与 Trace。
 `POWERCONTEXT_SERVER_LOGGING_FORMAT`（`console` 或 `json`）和 `POWERCONTEXT_SERVER_LOGGING_ACCESS`（默认 `true`）。
 原生个人服务通过 `powercontext service status` 查看 journal 查询条件或日志路径；Docker 部署查看容器日志。
 
+### 文件输出、轮替与压缩
+
+设置 `POWERCONTEXT_SERVER_LOGGING_FILE=true` 启用文件输出，Server 自动创建目录，将运行日志写入文件以替代 stdout。标准库 `RotatingFileHandler` 默认在接近 20 MiB 时轮替，每个活动文件最多保留十个 gzip 归档。轮替大小、保留数量和压缩方式可按存储及 CPU 预算调整；重启后继续追加活动文件，无需外部轮替工具。
+
+| 环境变量 | 默认值 | 含义 |
+| --- | --- | --- |
+| `POWERCONTEXT_SERVER_LOGGING_FILE` | `false` | 写入托管文件以替代 stdout |
+| `POWERCONTEXT_SERVER_LOGGING_DIRECTORY` | 用户数据目录下的 `logs/` | 日志目录，遵循 `POWERCONTEXT_HOME` |
+| `POWERCONTEXT_SERVER_LOGGING_MAX_BYTES` | `20971520` | 按大小轮替的阈值，必须为正数 |
+| `POWERCONTEXT_SERVER_LOGGING_BACKUP_COUNT` | `10` | 每个活动文件最多保留的归档数，至少为一 |
+| `POWERCONTEXT_SERVER_LOGGING_COMPRESSION` | `gzip` | 归档压缩方式：`gzip` 或 `none` |
+
+```bash
+export POWERCONTEXT_SERVER_LOGGING_FILE=true
+export POWERCONTEXT_SERVER_LOGGING_DIRECTORY=/var/lib/powercontext/logs
+powercontext server run
+```
+
+文件按已有 Server 进程角色命名为 `all.log`、`api.log` 或 `background.log`；显式配置但未指定角色时使用 `server.log`。Worker 共用所属 Server 的文件，每条日志保留执行身份。归档依次为 `all.log.1.gz`、`all.log.2.gz`，`.1` 为最新归档；关闭压缩时归档后缀为 `.1`、`.2` 等，切换压缩策略不会删除旧策略的归档。活动文件保持未压缩。大小阈值是近似值，单条大日志可能超过阈值。保留数量仅约束对应活动文件的归档，不清理目录内的其他文件。`POWERCONTEXT_SERVER_LOGGING_FORMAT` 选择可读文本或 JSON 格式，对 stdout 和文件输出均有效。
+
+Worker 在发送端完成格式化和字段白名单过滤，通过各自专用的 socketpair 将日志发送给所属 Server。每条通道在 spawn 前创建，仅发送端传递给对应 Worker。接收器不监听网络端口，不反序列化 Python 对象。JSON 行封装保留输出中的换行，Worker 身份及 request/trace 关联在发送前确定。一个接收线程复用多个通道，一个写入线程消费有界的进程内队列；日志处理不额外创建进程。仅输出标准流时继续使用标准 stream handler。
+
+每个文件使用独占写入锁，相同目录和角色的第二个 Server 会被拒绝；独立副本应使用不同目录。关闭日志前先停止 Worker。关闭时最多等待一秒排空 Worker 日志通道，再通过 `QueueListener.stop()` 完成队列中的输出，最后关闭 handler；文件写入、压缩和关闭使用原生 logging 清理，不另设超时；文件 sink 阻塞时可能延迟 Server 进程退出。残缺记录直接丢弃，不打印其内容；单个 Worker 通道故障不影响其他通道。发送等待有上限，发送失败后关闭该 Worker 的日志通道。接收器最多处理 256 条并发通道，单条 JSON 行封装在 UTF-8 编码后最多 256 KiB。超大记录、队列满、传输故障或进程被强制退出时可能丢失日志，日志仍为 best-effort。
+
+macOS 和 Windows 个人服务默认启用托管文件输出，显式设置 `POWERCONTEXT_SERVER_LOGGING_FILE=false` 可保留标准流输出。Linux 个人服务默认继续使用 journal。宿主管理的 stdout/stderr 文件仍接收启动诊断和直接的标准流写入，不受托管 handler 的轮替策略管理。`powercontext service status` 显示宿主诊断日志目录或 journal 查询条件；自定义托管目录由 `POWERCONTEXT_SERVER_LOGGING_DIRECTORY` 指定。
+
+目录不可用或已有写入者时，文件日志配置失败。运行期间的格式化、传输、入队、写入及压缩失败均使用不含内容的 `observability.log_failed` 通知。gzip 归档完整发布后才删除原始文件。通过 SDK 使用 Runtime 不配置日志，仍由嵌入应用管理。嵌入式 Server 启用文件输出时可以持有仅用于 Worker 的日志接收器，不重新配置嵌入应用的 logger。
+
 用响应中的 `X-PowerContext-Request-ID` 关联失败请求与诊断记录。宿主指南还说明不含内容的召回与采集诊断；
 没有上下文结果可能是正常情况，不一定代表服务故障。
 
@@ -62,6 +90,12 @@ Server spans 在 `powercontext.error.category` 中使用相同词汇，各 bound
 Supervisor 的 worker 和 wait spans 在跨进程后保留 child 的有限错误分类。
 策略阻塞与 child 取消分别使用 `blocked` 和 `cancelled` outcome，不设置 error span status；
 模型失败保留 timeout、configuration 或 dependency 分类。
+启用流式聚合（`POWERCONTEXT_SERVER_INFERENCE_GENERATION_STREAMING=auto`）时，`unit` 为 `inference` 的
+`inference.generation.usage_missing` WARNING 表示一次 generation 请求成功完成、但 provider 未随流返回 usage，
+该请求的用量统计会缺失。该事件不携带 prompt 或响应内容，也不影响本次请求的结果。
+`auto` 已设置且模型名前缀不属于 `anthropic`、`openai`、`openai-chat`、`openai-responses` 时，`unit` 为
+`inference` 的 `inference.generation.streaming_not_applied` WARNING 表示该模型仍走非流式请求。该事件不携带
+prompt 或响应内容，也不改变本次请求的结果。
 Child 取消时，supervisor 以 `INFO` 级别输出 `artifact_processing.failed`，outcome/category 为 `cancelled`，
 诊断代码为 `worker_cancelled`。Application spans 根据已映射的诊断代码分类，
 即使敏感 exception values 已从 logs 和 traces 中排除，也保留正确分类。
@@ -118,7 +152,7 @@ API 与后台进程同机部署时应使用不同端口。设置 `POWERCONTEXT_S
 | `dependency_probe_duration_seconds` | `dependency`、`outcome`：实际探测耗时，不包含缓存命中 |
 | `telemetry_collection_timestamp_seconds` | 最近成功复制被动快照的时间；首次采集前为 `0` |
 | `telemetry_collection_failures_total` | 被动采集失败次数；失败保留先前观察 |
-| `telemetry_log_records_dropped_total` | 进程自有日志 handler 未能交付的记录数 |
+| `telemetry_log_records_dropped_total` | 进程自有 handler 或 Worker 接收端确认未能交付的记录数；干净的 EOF/reset 不计入丢失，未观测到的丢失不计数 |
 
 详细探测观察覆盖 `database`、`inference.generation`、`inference.rerank`、`inference.decision` 和
 `inference.embedding`。同一 `dependency_state` 指标还包含有界总体检查：`runtime`、

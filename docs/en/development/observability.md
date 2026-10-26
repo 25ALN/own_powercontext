@@ -85,14 +85,11 @@ full database URLs, or sensitive filesystem paths. An allowed field still requir
 a redaction engine. Do not interpolate those values into the message or include them in a raw provider exception.
 Use `exc_info` only after reviewing the error's values and attached context for sensitive data.
 
-The Server configures handlers and format. It injects the picklable `WorkerLogging` bootstrap into automatically
-composed spawn workers through `worker_initializer`. Custom bindings own their launcher initialization.
-Importing or running the Runtime as an SDK must not configure global logging. Keep Runtime observations independent
-of Server settings, Prometheus, and OTel implementation types.
+The Server configures handlers and format. It supplies `worker_initializer` for automatically composed spawn workers; file output prepares a picklable `WorkerLogging` bootstrap for each launch. Custom bindings own their launcher initialization. Importing or running the Runtime as an SDK must not configure global logging. Keep Runtime observations independent of Server settings, Prometheus, and OTel implementation types.
 
-Operational logs are best-effort. The Server handler isolates filter/formatter/write failures and emits one
-content-free failure notification per handler. Do not use logs or sampled traces as a durable audit, billing,
-or commit ledger. Request/trace/scope/source/worker identities do not belong in metric labels.
+Operational logs are best-effort. The Server handler isolates filter/formatter/write failures and emits one content-free failure notification per handler. File output uses `RotatingFileHandler` for rotation and retention, with `namer`/`rotator` and `gzip` for compression. The `worker_logging` context reuses the configured Server receiver or owns a worker-only sink for an embedded Server; it must outlive Runtime worker cleanup. Workers apply the field allowlist, identity binding, and formatting before sending. Only rendered UTF-8 output crosses the process boundary; the receiver must not rebind parent identity or serialize original extras. Before each spawn, the bootstrap's `prepare()` context creates a dedicated socketpair and yields the picklable child initializer. The launcher closes its sending end after spawn succeeds or cancellation cleanup completes; the receiver keeps reading until EOF. JSON-line envelopes preserve multiline console output. Malformed or incomplete records retire only their stream and are never echoed. Send waits are bounded. The receiver multiplexes streams into a bounded in-process queue feeding the native handlers. A full queue drops the record and reports a content-free failure. The Server stops Runtime and tracing before draining streams and calling the public `QueueListener.stop()` to finish queued output. The drain deadline bounds Worker-channel cleanup; file writes, compression, and close follow the native logging lifecycle without a separate deadline. Confirmed receiver discards increase the process-local drop counter independently of the once-only notification; clean EOF/reset does not. Logging starts no Manager or other helper process.
+
+Do not use logs or sampled traces as a durable audit, billing, or commit ledger. Request/trace/scope/source/worker identities do not belong in metric labels.
 
 ## Verify the behavior
 

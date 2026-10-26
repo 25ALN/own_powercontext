@@ -440,6 +440,9 @@ jobs:
       - name: Verify spawned worker lifecycle on Windows
         run: uv run --locked --no-sync pytest -q tests/builtin/runtime/test_artifact_processing.py
 
+      - name: Verify spawned worker logging on Windows
+        run: uv run --locked --no-sync pytest -q tests/e2e/test_worker_logging.py
+
       - name: Verify bootstrap receipt persistence and failure recovery on Windows
         run: >-
           uv run --locked --no-sync pytest -q

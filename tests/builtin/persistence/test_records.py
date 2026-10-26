@@ -460,6 +460,24 @@ def test_source_create_persists_json_without_public_internal_fields() -> None:
     asyncio.run(scenario())
 
 
+def test_source_create_rejects_blank_text_content() -> None:
+    async def scenario() -> None:
+        async with SQLiteProfile.open(SQLiteConfig(), tables=BUILTIN_TABLES) as profile:
+            records, _, _ = _services(profile)
+            for blank in ("", "   "):
+                with pytest.raises(InvalidBaseAccessRequestError) as raised:
+                    await records.create_source("scope-a", "content", blank)
+                assert raised.value.field == "content"
+                assert raised.value.reason == "content text must not be blank"
+
+            created = await records.create_source("scope-a", "content", None)
+            assert created.content is None
+            page = await records.list_sources("scope-a", limit=100, cursor=None, caller="user:one")
+            assert [item.source_id for item in page.items] == [created.source_id]
+
+    asyncio.run(scenario())
+
+
 def test_source_list_stops_decoding_when_the_response_budget_is_full(monkeypatch) -> None:
     async def scenario() -> None:
         async with SQLiteProfile.open(SQLiteConfig(), tables=BUILTIN_TABLES) as profile:

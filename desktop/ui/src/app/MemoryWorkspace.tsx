@@ -19,6 +19,7 @@ import type {
   DesktopState,
   AtomicMemoryDetail,
   ArtifactReference,
+  AtomicMemoryRecord,
   MemorySearchHit,
   WriteOutcome,
 } from "../generated/ipc";
@@ -41,13 +42,22 @@ type Props = {
 };
 export const textBytes = (value: string) =>
   new TextEncoder().encode(value).length;
+type NoteFormProps = Props & {
+  onReadSaved: (
+    artifact: ArtifactReference,
+    trigger: HTMLButtonElement,
+  ) => void;
+  invalidateSaved: number;
+};
 export function NoteForm({
   state,
   language,
   onState,
   onDirty,
   contextPending = false,
-}: Props) {
+  onReadSaved,
+  invalidateSaved,
+}: NoteFormProps) {
   const t = memoryMessages[language];
   const { confirm, confirmation } = useConfirmation(language);
   const active = state?.active;
@@ -56,11 +66,17 @@ export function NoteForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [outcome, setOutcome] = useState<WriteOutcome | null>(null);
+  const [saved, setSaved] = useState<AtomicMemoryRecord[]>([]);
+  // The save receipt records how many records the Server actually returned;
+  // it stays intact when a later failed read hides the visible bodies.
+  const [returnedCount, setReturnedCount] = useState<number | null>(null);
   const submitting = useRef(false);
   const composing = useRef(false);
   const lifetime = useRef(0);
   const generation = useRef(active?.generation);
   generation.current = active?.generation;
+  const contentInvalidation = useRef(invalidateSaved);
+  contentInvalidation.current = invalidateSaved;
   const enabled =
     !contextPending && !!active?.scope && active.report.compatibilityVerified;
   const bytes = textBytes(text);
@@ -68,6 +84,8 @@ export function NoteForm({
     setText("");
     setError(null);
     setOutcome(null);
+    setSaved([]);
+    setReturnedCount(null);
     onDirty(false);
     submitting.current = false;
     setBusy(false);
@@ -75,6 +93,11 @@ export function NoteForm({
       lifetime.current++;
     };
   }, [active?.generation]);
+  // A failed read must clear returned record bodies like any other private
+  // result, while the write outcome and its original target stay visible.
+  useEffect(() => {
+    if (invalidateSaved > 0) setSaved([]);
+  }, [invalidateSaved]);
   async function save() {
     if (!enabled || !active?.scope || submitting.current || composing.current)
       return;
@@ -91,17 +114,26 @@ export function NoteForm({
     )
       return;
     if (ticket !== lifetime.current || generation.current !== original) return;
+    const contentTicket = contentInvalidation.current;
     const isCurrent = () =>
       ticket === lifetime.current && generation.current === original;
     submitting.current = true;
     setBusy(true);
     setError(null);
     setOutcome(null);
+    setSaved([]);
+    setReturnedCount(null);
     try {
       const result = await desktopApi.remember(original, text);
       if (isCurrent()) {
         setOutcome(result);
         if (result.record.status === "succeeded") {
+          // Zero, one, or multiple returned records: represent each honestly.
+          const records = result.result?.records ?? [];
+          setReturnedCount(records.length);
+          // A read failure may have hidden private results while this write
+          // was in flight. Keep its receipt without restoring invalidated bodies.
+          if (contentTicket === contentInvalidation.current) setSaved(records);
           setText("");
           onDirty(false);
         }
@@ -179,7 +211,15 @@ export function NoteForm({
           error={outcome.record.error}
           language={language}
           title={t.failed}
-        />
+        >
+          <p className="small">
+            {t.original}:{" "}
+            <code>
+              {outcome.record.context.endpoint} ·{" "}
+              {outcome.record.context.scopeId}
+            </code>
+          </p>
+        </ErrorFeedback>
       ) : (
         outcome && (
           <PageFeedback
@@ -193,15 +233,56 @@ export function NoteForm({
             }
             title={
               outcome.record.status === "succeeded"
-                ? outcome.result?.records.length
-                  ? t.success
+                ? returnedCount
+                  ? t.savedReturned(returnedCount) +
+                    (saved.length > 0 ? ` ${t.savedOpen}` : "")
                   : t.noEntry
                 : outcome.record.status === "unknown"
                   ? t.unknown
                   : `${t.failed} ${connectionError(outcome.record.error, language)}`
             }
-          />
+          >
+            {outcome.record.status === "unknown" && (
+              <p className="small">
+                {t.original}:{" "}
+                <code>
+                  {outcome.record.context.endpoint} ·{" "}
+                  {outcome.record.context.scopeId}
+                </code>
+              </p>
+            )}
+          </PageFeedback>
         )
+      )}
+      {saved.length > 0 && (
+        <div className="stack">
+          <ul className="saved-hits">
+            {saved.map((record) => {
+              const key = JSON.stringify(record.artifact);
+              const title = record.text.split("\n", 1)[0] || record.text;
+              return (
+                <li key={key}>
+                  <div className="hit-card">
+                    <img src={memoryIcon} alt="" />
+                    <div className="hit-main">
+                      <div className="hit-title">{title}</div>
+                      <div className="hit-snippet">{record.text}</div>
+                    </div>
+                    <div className="hit-actions">
+                      <button
+                        onClick={(event) =>
+                          onReadSaved(record.artifact, event.currentTarget)
+                        }
+                      >
+                        {t.openSaved}
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </section>
   );
@@ -212,15 +293,16 @@ export function MemoryWorkspace(props: Props) {
   const failedReference = useRef<ArtifactReference | undefined>(undefined);
   const t = memoryMessages[language];
   const active = state?.active;
-  const readerHeading = useRef<HTMLHeadingElement>(null);
   const readButton = useRef<HTMLButtonElement | null>(null);
+  const queryInput = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MemorySearchHit[] | null>(null);
   const [entry, setEntry] = useState<AtomicMemoryDetail | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [savedRead, setSavedRead] = useState(false);
+  const [invalidateSaved, setInvalidateSaved] = useState(0);
   const [busy, setBusy] = useState<"search" | "detail" | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [copied, setCopied] = useState("");
   const sequence = useRef(0);
   const pendingCancel = useRef(Promise.resolve());
   const current = useRef(active?.generation);
@@ -233,8 +315,8 @@ export function MemoryWorkspace(props: Props) {
     setHits(null);
     setEntry(null);
     setSelected(null);
+    setSavedRead(false);
     setError(null);
-    setCopied("");
     setBusy(null);
   }
   function cancel() {
@@ -255,14 +337,14 @@ export function MemoryWorkspace(props: Props) {
         void desktopApi.cancelMemory(active.generation).catch(() => {});
     };
   }, [active?.generation]);
-  async function read(reference?: ArtifactReference) {
+  async function read(reference?: ArtifactReference, fromSave = false) {
     if (!enabled || !active?.scope) return;
     const generation = active.generation;
     const ticket = ++sequence.current;
     failedReference.current = reference;
     setError(null);
     setEntry(null);
-    setCopied("");
+    setSavedRead(fromSave);
     setBusy(reference ? "detail" : "search");
     if (reference) setSelected(JSON.stringify(reference));
     else setHits(null);
@@ -286,6 +368,14 @@ export function MemoryWorkspace(props: Props) {
         setHits(null);
         setEntry(null);
         setSelected(null);
+        setSavedRead(false);
+        // A failed read invalidates private result content everywhere,
+        // including returned record bodies in the save form.
+        // Move only the disappearing active trigger; a user who already
+        // moved elsewhere while awaiting the read keeps their focus.
+        if (fromSave && document.activeElement === readButton.current)
+          queryInput.current?.focus();
+        setInvalidateSaved((value) => value + 1);
         try {
           onState(await desktopApi.state());
         } catch {
@@ -296,19 +386,12 @@ export function MemoryWorkspace(props: Props) {
       if (ticket === sequence.current) setBusy(null);
     }
   }
-  useEffect(() => {
-    if (entry) readerHeading.current?.focus();
-  }, [entry]);
-  async function copy(reference: boolean) {
-    if (!entry) return;
-    try {
-      await navigator.clipboard.writeText(
-        reference ? JSON.stringify(entry.artifact, null, 2) : entry.text,
-      );
-      setCopied(t.copied);
-    } catch {
-      setCopied(t.copyFailed);
-    }
+  async function readSaved(
+    artifact: ArtifactReference,
+    trigger: HTMLButtonElement,
+  ) {
+    readButton.current = trigger;
+    await read(artifact, true);
   }
   const record = state?.lastWrite;
   return (
@@ -383,6 +466,8 @@ export function MemoryWorkspace(props: Props) {
         language={language}
         onState={onState}
         onDirty={onDirty}
+        onReadSaved={(artifact, trigger) => void readSaved(artifact, trigger)}
+        invalidateSaved={invalidateSaved}
         contextPending={contextPending}
       />
       <section className="card stack">
@@ -390,6 +475,7 @@ export function MemoryWorkspace(props: Props) {
         <div className="search-row">
           <span className="search-input">
             <input
+              ref={queryInput}
               aria-label={t.query}
               disabled={!enabled}
               value={query}
@@ -515,81 +601,122 @@ export function MemoryWorkspace(props: Props) {
           <p className="note-line">{t.browseNote}</p>
         </section>
         {entry && (
-          <section className="card stack reader" aria-label={t.detail}>
-            <div className="card-heading">
-              <h2 ref={readerHeading} tabIndex={-1}>
-                {t.detail}
-              </h2>
-              <span className="badge">{entry.kind}</span>
-            </div>
-            <div className="plain-text reader-body" tabIndex={0}>
-              {entry.text}
-            </div>
-            {active?.scope && (
-              <p className="small">
-                {t.scopeBelong} <strong>{active.scope.title}</strong>
-              </p>
-            )}
-            <div className="reference-block">
-              <h3>{t.reference}</h3>
-              <dl className="reference-summary">
-                <dt>Artifact family</dt>
-                <dd>{entry.artifact.family}</dd>
-                <dt>Artifact ID</dt>
-                <dd>{entry.artifact.artifact_id}</dd>
-                <dt>Revision</dt>
-                <dd>{entry.artifact.revision}</dd>
-              </dl>
-              <p className="small">{t.referenceNote}</p>
-              <button
-                className="primary-outline"
-                onClick={() => void copy(true)}
-              >
-                {t.copyReference}
-              </button>
-            </div>
-            <div className="actions">
-              <button onClick={() => void copy(false)}>{t.copyText}</button>
-              <button
-                onClick={() => {
-                  setEntry(null);
-                  setCopied("");
-                  requestAnimationFrame(() => readButton.current?.focus());
-                }}
-              >
-                {t.close}
-              </button>
-            </div>
-            {copied && <p role="status">{copied}</p>}
-            <details>
-              <summary>{t.referenceFull}</summary>
-              <pre className="plain-text">
-                {JSON.stringify(entry.artifact, null, 2)}
-              </pre>
-            </details>
-            <details>
-              <summary>{t.sources}</summary>
-              {entry.source_refs.length ? (
-                <ul>
-                  {entry.source_refs.map((source) => (
-                    <li
-                      key={JSON.stringify([
-                        source.source_type,
-                        source.source_id,
-                      ])}
-                    >
-                      {source.source_type} <code>{source.source_id}</code>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <PageFeedback compact kind="empty" title={t.noSources} />
-              )}
-            </details>
-            <p className="note-line">{t.agentScopeNote}</p>
-          </section>
+          <ReaderPane
+            entry={entry}
+            activeScope={active?.scope ?? null}
+            savedRead={savedRead}
+            language={language}
+            onClose={() => {
+              setEntry(null);
+              setSavedRead(false);
+              requestAnimationFrame(() => {
+                // Another save can replace the button that opened this reader.
+                const target = readButton.current?.isConnected
+                  ? readButton.current
+                  : queryInput.current;
+                target?.focus();
+              });
+            }}
+          />
         )}
       </div>
     </div>
+  );
+}
+type ReaderPaneProps = {
+  entry: AtomicMemoryDetail;
+  activeScope: { title: string } | null;
+  savedRead: boolean;
+  language: Language;
+  onClose: () => void;
+};
+function ReaderPane({
+  entry,
+  activeScope,
+  savedRead,
+  language,
+  onClose,
+}: ReaderPaneProps) {
+  const t = memoryMessages[language];
+  const readerHeading = useRef<HTMLHeadingElement>(null);
+  const [copied, setCopied] = useState("");
+  useEffect(() => {
+    if (entry) readerHeading.current?.focus();
+  }, [entry]);
+  async function copy(reference: boolean) {
+    try {
+      await navigator.clipboard.writeText(
+        reference ? JSON.stringify(entry.artifact, null, 2) : entry.text,
+      );
+      setCopied(t.copied);
+    } catch {
+      setCopied(t.copyFailed);
+    }
+  }
+  return (
+    <section className="card stack reader" aria-label={t.detail}>
+      {savedRead && (
+        <p role="status">
+          {t.savedSection} · {entry.artifact.family}{" "}
+          <code>{entry.artifact.artifact_id}</code> @{" "}
+          <code>{entry.artifact.revision}</code>
+        </p>
+      )}
+      <div className="card-heading">
+        <h2 ref={readerHeading} tabIndex={-1}>
+          {t.detail}
+        </h2>
+        <span className="badge">{entry.kind}</span>
+      </div>
+      <div className="plain-text reader-body" tabIndex={0}>
+        {entry.text}
+      </div>
+      {activeScope && (
+        <p className="small">
+          {t.scopeBelong} <strong>{activeScope.title}</strong>
+        </p>
+      )}
+      <div className="reference-block">
+        <h3>{t.reference}</h3>
+        <dl className="reference-summary">
+          <dt>Artifact family</dt>
+          <dd>{entry.artifact.family}</dd>
+          <dt>Artifact ID</dt>
+          <dd>{entry.artifact.artifact_id}</dd>
+          <dt>Revision</dt>
+          <dd>{entry.artifact.revision}</dd>
+        </dl>
+        <p className="small">{t.referenceNote}</p>
+        <button className="primary-outline" onClick={() => void copy(true)}>
+          {t.copyReference}
+        </button>
+      </div>
+      <div className="actions">
+        <button onClick={() => void copy(false)}>{t.copyText}</button>
+        <button onClick={onClose}>{t.close}</button>
+      </div>
+      {copied && <p role="status">{copied}</p>}
+      <details>
+        <summary>{t.referenceFull}</summary>
+        <pre className="plain-text">
+          {JSON.stringify(entry.artifact, null, 2)}
+        </pre>
+      </details>
+      <details>
+        <summary>{t.sources}</summary>
+        {entry.source_refs.length ? (
+          <ul>
+            {entry.source_refs.map((source) => (
+              <li key={JSON.stringify([source.source_type, source.source_id])}>
+                {source.source_type} <code>{source.source_id}</code>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>{t.noSources}</p>
+        )}
+      </details>
+      <p className="note-line">{t.agentScopeNote}</p>
+    </section>
   );
 }

@@ -11276,7 +11276,16 @@ OPENAPI_SCHEMA: dict[str, JsonValue] = {
                         "through "
                         "their "
                         "dedicated "
-                        "workflow."
+                        "workflow. "
+                        "String "
+                        "values "
+                        "that "
+                        "are "
+                        "empty "
+                        "or "
+                        "whitespace-only "
+                        "are "
+                        "rejected."
                     },
                 },
                 "additionalProperties": False,

@@ -861,7 +861,8 @@ dd {
 .statistics-zero {
   stroke: var(--border);
 }
-.memory-hits {
+.memory-hits,
+.saved-hits {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -869,7 +870,8 @@ dd {
   gap: 12px;
 }
 .memory-grid > *,
-.memory-hits > li {
+.memory-hits > li,
+.saved-hits > li {
   min-width: 0;
 }
 .hit-card {

@@ -79,10 +79,30 @@ export POWERCONTEXT_HOME=/srv/powercontext
 
 Server 配置使用 `POWERCONTEXT_SERVER_` 前缀。
 
+每个 Server 进程默认最多接纳 64 个并发外部 HTTP 请求，包括 REST、MCP、Dashboard 和健康检查。
+从读取请求体到响应结束始终占用一个名额，流式响应同样计入。容量满时立即返回 `503`、
+错误码 `server_overloaded` 和 `Retry-After: 1`，不排队，也不读取被拒绝的请求体。异常和取消都会释放名额。
+可信的进程内 MCP 到 HTTP 转发沿用外部请求的准入，不重复计数。
+
+Server 在下游解析之前按实际收到的字节限制请求体，默认上限为 16 MiB，分块上传同样受限。
+声明的 `Content-Length` 过大会提前拒绝；缺少该头或声明较小长度都不能绕过实际字节检查。
+超限返回 `413` 和错误码 `request_too_large`，读取在首个超限 chunk 处停止。这是可配置的部署级上限，
+不改变领域字段约束。默认值可容纳当前最大 5 MiB 的 Skill archive，其 base64 最长为 6,990,508 个字符，
+并为 JSON envelope 留出空间。调低上限可能拒绝原本符合领域约束的操作。两个 HTTP 上限都必须是正整数。
+应按可用内存调整：64 个请求各保留 16 MiB，请求体本身就需要 1 GiB，尚未包括解析和业务开销。
+交给下游时会短暂复制一次已接收的请求体，随后释放输入缓冲。
+按请求来源设置速率配额、上传超时、连接上限和跨 Server 进程的总额度由反向代理负责。
+
+MCP 使用 stateless Streamable HTTP，每次工具执行都采用当前请求的认证身份，不发放传输 Session ID，
+也不保留跨请求恢复的 SSE 会话。从 stateful Server 升级后应重新连接客户端；已持久化的 Scope、Memory
+和 Handoff 数据不受影响。长响应在结束前仍占用一个 HTTP 名额，应为并发请求预留其他名额。
+
 | 变量 | 默认值 | 含义 |
 | --- | --- | --- |
 | `POWERCONTEXT_SERVER_HTTP_HOST` | `127.0.0.1` | 监听地址 |
 | `POWERCONTEXT_SERVER_HTTP_PORT` | `8000` | 监听端口；配置向导在首次设置时建议使用 `17429` |
+| `POWERCONTEXT_SERVER_HTTP_MAX_REQUEST_BODY_BYTES` | `16777216` | 解析前允许的外部 HTTP 请求体字节数，包括分块上传 |
+| `POWERCONTEXT_SERVER_HTTP_MAX_CONCURRENT_REQUESTS` | `64` | 每进程进行中的外部 HTTP 请求上限，包括完整流式响应 |
 | `POWERCONTEXT_SERVER_WORKSPACE` | Server 启动目录 | 本机项目级 Agent Skill 目录的解析根目录 |
 | `POWERCONTEXT_SERVER_MCP_ENABLED` | `true` | 启用 Streamable HTTP MCP |
 | `POWERCONTEXT_SERVER_MCP_PATH` | `/mcp` | MCP 路径 |
@@ -100,6 +120,11 @@ Server 配置使用 `POWERCONTEXT_SERVER_` 前缀。
 | `POWERCONTEXT_SERVER_LOGGING_LEVEL` | `INFO` | operational log 级别 |
 | `POWERCONTEXT_SERVER_LOGGING_FORMAT` | `console` | `console` 或结构化 `json` 输出 |
 | `POWERCONTEXT_SERVER_LOGGING_ACCESS` | `true` | 记录外部 HTTP 和逻辑 MCP request completion |
+| `POWERCONTEXT_SERVER_LOGGING_FILE` | `false` | 写入托管文件以替代 stdout；macOS/Windows 个人服务默认开启 |
+| `POWERCONTEXT_SERVER_LOGGING_DIRECTORY` | 用户数据目录下的 `logs/` | 托管日志目录 |
+| `POWERCONTEXT_SERVER_LOGGING_MAX_BYTES` | `20971520` | 按大小轮替的阈值，必须为正数 |
+| `POWERCONTEXT_SERVER_LOGGING_BACKUP_COUNT` | `10` | 每个活动文件最多保留的归档数，至少为一 |
+| `POWERCONTEXT_SERVER_LOGGING_COMPRESSION` | `gzip` | 归档压缩方式：`gzip` 或 `none` |
 | `POWERCONTEXT_SERVER_METRICS_ENABLED` | `true` | 在 `/metrics` 暴露 Prometheus metrics |
 | `POWERCONTEXT_SERVER_METRICS_BACKGROUND_PORT` | `8001` | Background role 的 infrastructure listener 端口；使用 `HTTP_HOST`，随 metrics 一起关闭 |
 | `POWERCONTEXT_SERVER_TRACING_ENABLED` | `false` | 启用 span recording 和 OTLP export |
@@ -170,6 +195,8 @@ Server 配置使用 `POWERCONTEXT_SERVER_` 前缀。
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_MODEL_SETTINGS` | `{}` | Pydantic AI generation model settings JSON object |
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_TIMEOUT_SECONDS` | `30` | 单次结构化 generation 操作的超时秒数 |
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_MAX_REQUESTS` | `2` | 单次结构化 generation 操作最多发起的 provider 请求数，包含重试 |
+| `POWERCONTEXT_SERVER_INFERENCE_GENERATION_STREAMING` | `disabled` | `auto` 时，仅模型名前缀为 `anthropic`、`openai`、`openai-chat`、`openai-responses` 的 generation 模型改用流式请求并在本地聚合为完整响应。其他前缀仍走非流式。`disabled` 时全部保持非流式请求 |
+| `POWERCONTEXT_SERVER_INFERENCE_GENERATION_STREAM_IDLE_TIMEOUT_SECONDS` | `60` | 流式聚合时的最大空闲秒数：覆盖等待流建立并收到首个模型事件，以及相邻模型事件（正文、思考、工具调用）之间的间隔。供应商心跳不重置这个计时，超过即按超时处理 |
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_MODEL_CONTEXT_WINDOW_TOKENS` | `125000` | Topic 处理预算使用的 generation model 总上下文窗口 |
 | `POWERCONTEXT_SERVER_INFERENCE_EMBEDDING_MODEL` | 未设置 | Pydantic AI embedding model；必须同时设置 profile ID 和 dimension |
 | `POWERCONTEXT_SERVER_INFERENCE_EMBEDDING_BASE_URL` | provider 默认值 | 自定义 OpenAI-compatible embeddings base URL |
@@ -433,6 +460,15 @@ search request 最终 `limit` 的结果。它不会修改已存储 Memory 或索
 内置 reranker 是 LLM listwise reranker，不是独立的 cross-encoder protocol。默认复用 generation model 及其 provider
 settings。设置 `POWERCONTEXT_SERVER_INFERENCE_RERANK_MODEL` 后，该 LLM operation 可以使用独立的 model、base URL、
 headers、settings、timeout 和 request limit。
+
+Python 部署可以把可选的 `JevMemoryReranker` 通过
+`open_builtin_runtime(memory_reranker=...)` 注入 Runtime，使用 `JevRerankConfig`
+配置独立 API key、System One endpoint 和固定模型版本，例如 `jev-1.13.0`，并由调用方管理
+HTTPX client。适配器限制整个操作的时限、并发数和请求大小；超时、Provider 不可用、无效分数、
+缺少用量回执和模型版本不符均按 RFC 0080 显式返回 inference error。
+注入的 reranker 默认也会关闭召回扩展，只有现有 `RECALL_GATE_ALLOW_WITH_RERANK`
+配置显式允许时才扩展。上面的 Server 环境变量开关仍选择现有 LLM reranker。
+Jev 配置、三组对照评估与实际验证范围见仓库中的 `evaluation/memory/locomo/README.md`。
 
 同一个 generation model 也控制显式 Experience generation、managed Skill generation，以及语义化的 Skill
 fork/evolution。External Skill 精确导入和完整 package 上传不使用模型：PowerContext 会校验并保存 canonical package

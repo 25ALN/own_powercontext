@@ -58,11 +58,13 @@ export function ErrorFeedback({
   language,
   title,
   action,
+  children,
 }: {
   error: unknown;
   language: Language;
   title?: string;
   action?: ReactNode;
+  children?: ReactNode;
 }) {
   const t = messages[language];
   const code = connectionErrorCode(error);
@@ -92,6 +94,7 @@ export function ErrorFeedback({
       action={action}
     >
       {title && <p>{connectionError(error, language)}</p>}
+      {children}
       <p>{hint}</p>
     </PageFeedback>
   );

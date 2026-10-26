@@ -4638,7 +4638,7 @@ export interface components {
              * @enum {string}
              */
             source_type: "content";
-            /** @description JSON value persisted by the built-in content Source adapter. Server-reserved payload schemas, including handoff receipts, are rejected and must be created through their dedicated workflow. */
+            /** @description JSON value persisted by the built-in content Source adapter. Server-reserved payload schemas, including handoff receipts, are rejected and must be created through their dedicated workflow. String values that are empty or whitespace-only are rejected. */
             content: unknown;
         };
         /**

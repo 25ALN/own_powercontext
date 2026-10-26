@@ -11421,7 +11421,8 @@ components:
         content:
           description: >-
             JSON value persisted by the built-in content Source adapter. Server-reserved payload schemas, including
-            handoff receipts, are rejected and must be created through their dedicated workflow.
+            handoff receipts, are rejected and must be created through their dedicated workflow. String values that are
+            empty or whitespace-only are rejected.
     TaggableArtifactFamily:
       type: string
       description: All readable Artifact families support logical tags on persisted Artifacts.

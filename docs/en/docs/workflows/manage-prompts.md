@@ -13,6 +13,13 @@ which is a separate workflow.
 future processing windows; evidence boundaries, person attribution, sensitive-attribute safeguards, and the output
 contract remain fixed by the server.
 
+`atomic_memory.reconcile` customizes how an extracted Memory candidate is compared with related memories and earlier
+candidates from the same window. When `atomic_memory.extract` and `atomic_memory.reconcile` both use Auto, a candidate
+with nothing to compare is kept as extracted without a reconciliation request. When either Prompt is Custom, every
+candidate is reconciled. Extraction decides which facts are worth keeping. Built-in reconciliation can also drop a
+candidate it judges unworthy, but only while comparing it, so the first candidate of a window that has no related
+memory does not get that second check.
+
 ## Edit and verify
 
 1. Read current configuration, built-in instructions, and operation status through

@@ -88,10 +88,34 @@ Older libraries are rejected before database initialization or accepting writes.
 
 Server settings use the `POWERCONTEXT_SERVER_` prefix.
 
+Each Server process admits at most 64 concurrent external HTTP requests, including REST, MCP, Dashboard, and health
+requests. A request occupies a slot while its body is read and until its response finishes, including streaming
+responses. Saturation returns `503` with error code `server_overloaded` and `Retry-After: 1` immediately, without
+queueing or reading the rejected request body. Exceptions and cancellation release the slot. Trusted in-process
+MCP-to-HTTP projections reuse the external request's admission.
+
+Before downstream parsing, the Server checks the actual body against a 16 MiB limit, including chunked uploads.
+An oversized declared `Content-Length` is rejected early; an absent or smaller declared length cannot bypass the
+actual-byte check. Oversized requests return `413` with error code `request_too_large`, and reading stops at the
+first excess chunk. This deployment-level cap is configurable and does not change domain field limits. The default
+fits the current 5 MiB Skill archive limit, whose base64 representation takes at most 6,990,508 characters, plus its
+JSON envelope. Lower caps can reject otherwise valid operations. Both HTTP limits must be positive integers.
+Size them for available memory: 64 requests retaining 16 MiB each already represent 1 GiB of body data, before
+parsing and application overhead; replay briefly copies each accepted body once before releasing its input buffer.
+Reverse proxies own request-rate quotas, upload timeouts, connection limits,
+and aggregate limits across Server processes.
+
+MCP uses stateless Streamable HTTP so each tool execution receives the current request's authenticated identity.
+It does not issue transport session IDs or retain resumable cross-request SSE sessions. Reconnect clients after
+upgrading from a stateful Server. Persisted Scope, Memory and Handoff data are unaffected. A long-lived response
+still occupies an HTTP slot until it finishes; reserve other slots for concurrent requests.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `POWERCONTEXT_SERVER_HTTP_HOST` | `127.0.0.1` | Listener address |
 | `POWERCONTEXT_SERVER_HTTP_PORT` | `8000` | Listener port; the configuration wizard suggests `17429` for new setups |
+| `POWERCONTEXT_SERVER_HTTP_MAX_REQUEST_BODY_BYTES` | `16777216` | Maximum external HTTP body bytes before parsing, including chunked uploads |
+| `POWERCONTEXT_SERVER_HTTP_MAX_CONCURRENT_REQUESTS` | `64` | Per-process external HTTP requests in flight, including full streaming responses |
 | `POWERCONTEXT_SERVER_WORKSPACE` | Server startup directory | Resolution root for local project Agent Skill folders |
 | `POWERCONTEXT_SERVER_MCP_ENABLED` | `true` | Enable Streamable HTTP MCP |
 | `POWERCONTEXT_SERVER_MCP_PATH` | `/mcp` | MCP path |
@@ -109,6 +133,11 @@ Server settings use the `POWERCONTEXT_SERVER_` prefix.
 | `POWERCONTEXT_SERVER_LOGGING_LEVEL` | `INFO` | Operational log level |
 | `POWERCONTEXT_SERVER_LOGGING_FORMAT` | `console` | `console` or structured `json` output |
 | `POWERCONTEXT_SERVER_LOGGING_ACCESS` | `true` | Log external HTTP and logical MCP request completion |
+| `POWERCONTEXT_SERVER_LOGGING_FILE` | `false` | Write managed files instead of stdout; enabled by default for macOS/Windows personal services |
+| `POWERCONTEXT_SERVER_LOGGING_DIRECTORY` | User data directory + `logs/` | Managed log directory |
+| `POWERCONTEXT_SERVER_LOGGING_MAX_BYTES` | `20971520` | Positive size threshold for rotation |
+| `POWERCONTEXT_SERVER_LOGGING_BACKUP_COUNT` | `10` | Positive maximum archive count per active file |
+| `POWERCONTEXT_SERVER_LOGGING_COMPRESSION` | `gzip` | Archive compression: `gzip` or `none` |
 | `POWERCONTEXT_SERVER_METRICS_ENABLED` | `true` | Expose Prometheus metrics at `/metrics` |
 | `POWERCONTEXT_SERVER_METRICS_BACKGROUND_PORT` | `8001` | Background-role infrastructure listener port; uses `HTTP_HOST` and is disabled with metrics |
 | `POWERCONTEXT_SERVER_TRACING_ENABLED` | `false` | Enable span recording and OTLP export |
@@ -179,6 +208,8 @@ Server settings use the `POWERCONTEXT_SERVER_` prefix.
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_MODEL_SETTINGS` | `{}` | JSON object of Pydantic AI generation model settings |
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_TIMEOUT_SECONDS` | `30` | Timeout in seconds for one structured generation operation |
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_MAX_REQUESTS` | `2` | Maximum provider requests for one structured generation operation, including retries |
+| `POWERCONTEXT_SERVER_INFERENCE_GENERATION_STREAMING` | `disabled` | When `auto`, only generation models whose provider prefix is `anthropic`, `openai`, `openai-chat`, or `openai-responses` use a streamed request aggregated locally into one complete response. Other prefixes stay on non-streaming requests. `disabled` keeps every model on non-streaming requests |
+| `POWERCONTEXT_SERVER_INFERENCE_GENERATION_STREAM_IDLE_TIMEOUT_SECONDS` | `60` | Maximum idle seconds while aggregating a streamed request: while the stream opens and waits for its first model event, and between model events (text, thinking, or tool-call parts). Provider heartbeat frames do not reset this timer; a longer gap fails as a timeout |
 | `POWERCONTEXT_SERVER_INFERENCE_GENERATION_MODEL_CONTEXT_WINDOW_TOKENS` | `125000` | Total generation-model context window used to budget Topic processing |
 | `POWERCONTEXT_SERVER_INFERENCE_EMBEDDING_MODEL` | unset | Pydantic AI embedding model; requires profile ID and dimension |
 | `POWERCONTEXT_SERVER_INFERENCE_EMBEDDING_BASE_URL` | provider default | Custom OpenAI-compatible embeddings base URL |
@@ -479,6 +510,18 @@ reranking when search must remain independent of model availability. See
 The built-in reranker is an LLM listwise reranker, not a dedicated cross-encoder protocol. By default it reuses the
 generation model and its provider settings. Set `POWERCONTEXT_SERVER_INFERENCE_RERANK_MODEL` to give that LLM operation
 an independent model, base URL, headers, settings, timeout, and request limit.
+
+Python deployments can inject the optional `JevMemoryReranker` with a
+`JevRerankConfig` and a caller-owned HTTPX client into
+`open_builtin_runtime(memory_reranker=...)`. It requires a dedicated API key,
+System One endpoint, and pinned model such as `jev-1.13.0`. Its total deadline
+and concurrency/request-size bounds are explicit. Provider failures propagate as
+inference errors under RFC 0080, including timeouts, unavailable providers, invalid
+scores, missing usage receipts, and model-version drift. Injected rerankers also
+disable recall expansion unless the existing `RECALL_GATE_ALLOW_WITH_RERANK`
+setting enables it. The Server environment switch above selects the existing LLM
+reranker. See `evaluation/memory/locomo/README.md` in the repository for Jev
+configuration, the three-arm comparison, and execution coverage.
 
 The same configured generation model gates explicit Experience generation, managed Skill generation, and semantic
 Skill fork/evolution. Exact external Skill import and complete package upload do not use a model: PowerContext validates

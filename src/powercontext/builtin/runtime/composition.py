@@ -183,7 +183,11 @@ from powercontext.builtin.runtime.extraction_diagnostics import ExtractionDiagno
 from powercontext.builtin.runtime.family_processing import FAMILY_BINDINGS, FamilyWorkerSpec, run_family_worker
 from powercontext.builtin.runtime.memory_write_gate import build_memory_write_gate
 from powercontext.builtin.runtime.models import DreamOperationCapability, MemorySearchMode, RuntimeCapabilities
-from powercontext.builtin.runtime.processing_contracts import ArtifactProcessingModelUsageDelta, WorkerEntrypoint
+from powercontext.builtin.runtime.processing_contracts import (
+    ArtifactProcessingModelUsageDelta,
+    WorkerEntrypoint,
+    WorkerInitializerPreparation,
+)
 from powercontext.builtin.runtime.processing_discovery import SourceProcessingPendingProvider, enabled_profile_scopes
 from powercontext.builtin.runtime.processing_registry import (
     canonical_processing_manifest,
@@ -519,7 +523,7 @@ async def open_builtin_runtime(
     artifact_processing_bindings: Sequence[ArtifactProcessingBinding] = (),
     worker_security: dict[str, Any] | None = None,
     processing_observer: Callable[[str, str, float], None] | None = None,
-    worker_initializer: Callable[[], None] | None = None,
+    worker_initializer: Callable[[], None] | WorkerInitializerPreparation | None = None,
     worker_entrypoint_wrapper: Callable[[WorkerEntrypoint], WorkerEntrypoint] | None = None,
     scheduled_source_runner: ScheduledSourceRunner | None = None,
     scheduled_experience_runner: ScheduledExperienceRunner | None = None,
@@ -536,9 +540,11 @@ async def open_builtin_runtime(
     An explicit ``recall_effort_sink`` replaces that recorder rather than adding
     a second observation. A disabled gate invokes neither recorder nor sink.
 
-    ``worker_initializer`` is an optional picklable bootstrap for automatically
-    composed spawn workers. Custom bindings own their launchers and initialization.
-    The default does not configure process logging.
+    ``worker_initializer`` is an optional bootstrap for automatically composed spawn
+    workers. A ``WorkerInitializerPreparation`` can own per-launch resources through
+    a context manager yielding the picklable child bootstrap. Its resources remain
+    open until spawn or cancellation cleanup finishes. Custom bindings own their
+    launchers and initialization. The default does not configure process logging.
     """
 
     async with AsyncExitStack() as resources:
@@ -807,7 +813,9 @@ async def open_builtin_runtime(
                     ),
                 ),
                 context_assembly_max_entries=config.runtime.context_assembly_max_entries,
-                recall_sufficiency_policy=RecallSufficiencyPolicy.from_runtime_config(config.runtime),
+                recall_sufficiency_policy=RecallSufficiencyPolicy.from_runtime_config(
+                    config.runtime.model_copy(update={"memory_rerank_enabled": configured_reranker is not None})
+                ),
                 recall_embedding_timeout_seconds=config.runtime.recall_embedding_timeout_seconds,
                 scope_cache_size=config.runtime.scope_cache_size,
                 scope_evictor=contexts.evict,
@@ -933,7 +941,7 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
     injected_pipelines: Mapping[str, object | None] | None = None,
     injected_memory_write_gate: MemoryWriteGate | None = None,
     worker_security: dict[str, Any] | None = None,
-    worker_initializer: Callable[[], None] | None = None,
+    worker_initializer: Callable[[], None] | WorkerInitializerPreparation | None = None,
     worker_entrypoint_wrapper: Callable[[WorkerEntrypoint], WorkerEntrypoint] | None = None,
     worker_model_usage_observer: Callable[[ArtifactProcessingModelUsageDelta | None], None] | None = None,
     source_registry: SourceDefinitionRegistry = BUILTIN_SOURCE_REGISTRY,
@@ -1366,6 +1374,8 @@ async def _dream_generator(
         resources=resources,
         instrumentation=instrumentation,
         disable_provider_retries=True,
+        streaming=settings.generation_streaming,
+        stream_idle_timeout_seconds=settings.generation_stream_idle_timeout_seconds,
     )
     model_settings = cast(ModelSettings, dict(settings.generation_model_settings))
     model_settings["max_tokens"] = min(int(model_settings.get("max_tokens") or 4096), budget.max_output_tokens)
@@ -1485,6 +1495,8 @@ async def _generation_pipelines(
             headers=settings.generation_headers,
             resources=resources,
             instrumentation=instrumentation,
+            streaming=settings.generation_streaming,
+            stream_idle_timeout_seconds=settings.generation_stream_idle_timeout_seconds,
         )
         generation_request_settings = cast(ModelSettings, dict(settings.generation_model_settings)) or None
         generation_limits = InferenceLimits(
@@ -1633,6 +1645,8 @@ async def _generation_pipelines(
                 headers=rerank_headers,
                 resources=resources,
                 instrumentation=instrumentation,
+                streaming=settings.generation_streaming,
+                stream_idle_timeout_seconds=settings.generation_stream_idle_timeout_seconds,
             )
         if rerank_provider_model is not None and rerank_model is not None:
             rerank_values = (
@@ -1754,6 +1768,8 @@ async def _generation_decision(
             headers=decision_headers,
             resources=resources,
             instrumentation=instrumentation,
+            streaming=settings.generation_streaming,
+            stream_idle_timeout_seconds=settings.generation_stream_idle_timeout_seconds,
         )
     if decision_provider_model is None or decision_model is None:
         return None, None
@@ -1856,6 +1872,8 @@ async def _open_pydantic_ai_model(
     resources: AsyncExitStack,
     instrumentation: InstrumentationSettings | None,
     disable_provider_retries: bool = False,
+    streaming: Literal["auto", "disabled"] = "disabled",
+    stream_idle_timeout_seconds: float = 60.0,
 ) -> tuple[Model, Model]:
     from pydantic_ai.models import infer_model
     from pydantic_ai.models.instrumented import InstrumentedModel
@@ -1877,8 +1895,31 @@ async def _open_pydantic_ai_model(
         )
     )
     provider_model = await resources.enter_async_context(inferred_model)
-    model = provider_model if instrumentation is None else InstrumentedModel(provider_model, instrumentation)
+    model = provider_model
+    if streaming == "auto" and model_name.split(":", 1)[0] in _STREAMING_AGGREGATED_PROVIDERS:
+        # Gateways in front of non-streaming endpoints may drop idle exchanges
+        # long before the configured generation timeout; aggregate one streamed
+        # request instead. The wall-clock budget stays owned by the generator.
+        from powercontext.builtin.inference.pydantic_ai import StreamingAggregateModel
+
+        model = StreamingAggregateModel(model, idle_timeout_seconds=stream_idle_timeout_seconds)
+    elif streaming == "auto":
+        log_safely(
+            logger,
+            logging.WARNING,
+            "Streamed generation aggregation was not applied because the model provider prefix "
+            "is outside the supported set",
+            extra={
+                "event": "inference.generation.streaming_not_applied",
+                "operation": "generate",
+                "unit": "inference",
+            },
+        )
+    model = model if instrumentation is None else InstrumentedModel(model, instrumentation)
     return provider_model, model
+
+
+_STREAMING_AGGREGATED_PROVIDERS = frozenset({"anthropic", "openai", "openai-chat", "openai-responses"})
 
 
 def _provider_factory(

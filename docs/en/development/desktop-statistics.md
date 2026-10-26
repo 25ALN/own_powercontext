@@ -8,7 +8,7 @@ description: "Exact-Scope native statistics, isolation and qualification."
 ## Inventory and usage view
 
 Overview contains the self-contained **Current-Scope inventory and usage** view.
-Explicitly select the statistics-qualified `sqlite-stats-1da99747-v1` profile,
+Explicitly select the statistics-qualified `sqlite-stats-31ecdd61-v1` profile,
 activate the connection, select an exact Scope, choose a UTC usage period
 and press **Load statistics**. Loading is explicit; opening the view does not
 silently restore a connection or issue a statistics request. The shared shell's
