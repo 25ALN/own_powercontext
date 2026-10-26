@@ -670,7 +670,9 @@ def test_cli_reports_broken_command_providers(monkeypatch, name: str, value: str
 def test_server_identity_reset_requires_offline_confirmation_and_rotates(tmp_path) -> None:
     database = tmp_path / "runtime.db"
     environment = tmp_path / "server.env"
-    environment.write_text(f"POWERCONTEXT_SERVER_DATABASE_URL=sqlite+aiosqlite:///{database}\n")
+    environment.write_text(
+        f"POWERCONTEXT_SERVER_DATABASE_URL=sqlite+aiosqlite:///{database.as_posix()}\n", encoding="utf-8"
+    )
     cli = create_cli([server_app])
 
     refused = CliRunner().invoke(cli, ["server", "identity-reset", "--env-file", str(environment)])

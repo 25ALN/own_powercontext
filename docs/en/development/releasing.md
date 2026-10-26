@@ -56,6 +56,7 @@ the website lists stable releases only. `make docs-test` also runs this check as
 | Source | Managed value |
 | --- | --- |
 | `openapi/powercontext.yaml` | `info.version`, the prepared release version. |
+| `release/upgrade-support.json` | Target release version; source versions and the support policy require compatibility review. |
 | `src/powercontext/http/_generated/` | `API_VERSION` in `operations.py` and `info.version` in `schema.py`, regenerated through `make api-generate`. |
 | `README.md`, `README_CN.md`, `README_JP.md` | Current release prose, pinned package installation commands, and matching Agent integration tag. |
 | `docs/en/docs/get-started/quickstart.md`, `docs/zh/docs/get-started/quickstart.md` | Current release and matching installation/tag instructions. |
@@ -125,6 +126,73 @@ The DSH README's statement that a capability was included in release `1.1.0` is 
 installation pins are synchronized.
 
 ## Verify before publication
+
+### Database upgrade support
+
+`release/upgrade-support.json` declares the target version, source-version selection policy, backends, and
+configurations. `automatic_sources` keeps 1.3.0 as its fixed baseline; explicit `cases` are empty.
+The gate requires twelve cases: one source × three backends × vectors enabled/disabled × Code enabled/disabled.
+The target is always the actual wheel built by CI. Future target releases keep testing 1.3.0;
+intervening releases are not added automatically. The registered 1.4.0 bridge remains implemented but is outside
+CI upgrade acceptance, so a passing gate does not certify its upgrade path. Source wheel URLs and SHA-256s are resolved
+from public PyPI and recorded with the target artifact.
+
+The source-specific chains are `s1300 → s1400 → s1401 → s1402` for 1.3.0 and
+`r1400 → s1400 → s1401 → s1402` for 1.4.0. They share the target contract while preserving their frozen execution
+history and journal lineage for subsequent registered upgrades. Application versions do not identify schema
+checkpoints. In particular, 1.4.0 already has current Candidate envelopes: its bridge preserves those records and
+creates empty retained tables for the common target shape, without inventing old Candidate history. Adding other
+sources requires exact captures, a registered bridge and actual acceptance; the two registered paths do not certify
+all releases between them or the target.
+The current `upgrade-required` policy mandates positive acceptance on all three backends while keeping upgrade
+support unverified. Every profile points to `tests/release_upgrades/test_full_server.py`; missing migration support
+must fail. Neither a fresh-install-only declaration nor correct rejection of an old database satisfies this gate.
+After the full migration implementation and acceptance pass, review the declaration, set `supported-upgrades`, and
+regenerate the installation notices before publication. Both modes run the same mandatory acceptance matrix.
+The suite contract and evidence requirements are in `tests/release_upgrades/README.md` in the repository.
+
+`make check` and `make release-check` validate this policy and the bilingual installation notices. Changes to
+managed persistence inputs require a compatibility review with an updated digest and rationale. A digest is a
+review trigger, not evidence that a migration is correct. Managed text hashes normalize CRLF to LF so checkout
+line endings do not require a new review; distribution hashes always cover the exact archive bytes. `make version-bump` also updates the policy target;
+regenerate the support notices with `uv run python scripts/upgrade_release_gate.py --write-docs` after matrix changes.
+
+Build exactly one wheel and its matching source distribution into `dist/`, then execute the declared upgrade cases:
+
+```bash
+make upgrade-release-test
+uv run python scripts/run_upgrade_release_gate.py --release --release-notes /path/to/release-notes.md
+```
+
+The publication input directory must contain exactly one wheel and one matching `.tar.gz` source distribution;
+leftover distributions and unexpected files fail validation (`uv`'s `.gitignore` is not an artifact). The runner checks
+source metadata and builds a wheel from the source archive, comparing all member contents except the derived
+`RECORD` listing. A stale source archive with the same version therefore cannot bypass validation. Archive timestamps
+and compression do not affect this comparison. A build-tool change that alters wheel contents requires rebuilding
+the complete pair, not ignoring the mismatch.
+
+The runner tests a private snapshot, records exact artifact SHA-256s in `publication.json`, and exports only passing
+files to the evidence directory's `validated-dist/`. CI uploads that set. `make publish` uses `--release --publish` to
+upload those exact paths in the same invocation; subsequent changes to the original `dist/` cannot join the upload.
+No packages are uploaded by validation commands without `--publish`.
+
+The release check requires the actual wheel version to match the policy and the release notes to include the exact
+English support declaration from the installation guide. It installs each exact source release and the target wheel
+in separate environments. Missing tests, skipped backends, failures, and missing evidence block the check. Static
+policy validation alone does not establish an upgrade path. Ordinary PR builds may have a development
+version; the `--release` check must run against the final tagged wheel without overriding its version.
+
+The **Upgrade release gate** CI job requires successful public migration commands, full Server readiness, target
+startup, preserved records and new writes on real 1.3.0 databases in all twelve declared cases. Limited bundle verification with
+`server_ready=false` fails. Every backend runs even if another backend fails, with separate logs and results.
+seekDB runs embedded in a temporary runner directory. PR and publication jobs start a disposable OceanBase CE
+container, wait for its MySQL tenant, archive diagnostics, and remove it even on failure. No external database
+credentials are needed. Unavailable backends fail instead of being skipped. Historical rejection regressions are
+not part of the positive acceptance gate. Administrators must make this job required in branch protection.
+The release workflow gates distribution upload, PyPI publication, and release assets on the acceptance result and
+archives its evidence. It runs after `release.published`, so it cannot prevent the earlier manual publication of
+the GitHub Release page: run the command above before that action. `make publish` requires
+`UPGRADE_RELEASE_NOTES=/path/to/release-notes.md` and runs the same gate before uploading packages.
 
 Run the checks for the complete release changes, including generated contracts and documentation:
 

@@ -42,6 +42,7 @@ from powercontext.server.authz import (
 from powercontext.server.authz.composition import open_builtin_access_control, open_casbin_access_control
 from powercontext.server.factory import create_server_app
 from powercontext.server.settings import AccessControlConfig, McpConfig, MetricsConfig, ServerSettings
+from tests.e2e.server_storage import prepare_server_database
 
 ADMIN = PrincipalRef(type="service", id="admin")
 AUDIT = AccessAuditContext(transport="http", operation="test")
@@ -73,17 +74,19 @@ class _Authentication:
 @asynccontextmanager
 async def _server(tmp_path: Path, backend="builtin", *, inference: InferenceConfig | None = None):
     database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'regressions.db'}")
+    settings = ServerSettings(
+        database=database,
+        inference=inference or InferenceConfig(),
+        runtime=RuntimeConfig(artifact_processing_families=()),
+        access=AccessControlConfig(mode="enforced", deployment_id="regressions"),
+        mcp=McpConfig(enabled=False),
+        metrics=MetricsConfig(enabled=False),
+    )
+    await asyncio.to_thread(prepare_server_database, settings)
     opener = open_builtin_access_control if backend == "builtin" else open_casbin_access_control
     async with opener(database, bootstrap_administrators=(ADMIN,), deployment_id="regressions") as access:
         app = create_server_app(
-            settings=ServerSettings(
-                database=database,
-                inference=inference or InferenceConfig(),
-                runtime=RuntimeConfig(artifact_processing_families=()),
-                access=AccessControlConfig(mode="enforced", deployment_id="regressions"),
-                mcp=McpConfig(enabled=False),
-                metrics=MetricsConfig(enabled=False),
-            ),
+            settings=settings,
             authentication_provider=_Authentication(),
             access_control=access,
             scheduler_path=tmp_path / "scheduler.db",

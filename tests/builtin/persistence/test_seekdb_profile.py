@@ -83,7 +83,7 @@ class _SeekDBModule:
         return self.instance
 
 
-async def _skip_dream_preflight(_engine: AsyncEngine) -> None:
+async def _skip_dream_preflight(_engine: AsyncEngine, *, _archive_recovery: bool = False) -> None:
     """These profile unit tests use engine doubles; read-only preflight has integration coverage."""
 
 

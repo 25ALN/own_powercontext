@@ -134,6 +134,7 @@ jobs:
             desktop/.artifacts/windows-smoke.json
             desktop/.artifacts/ci-compatibility.json
             desktop/.artifacts/real-server.json
+            desktop/.artifacts/real-server-*/
             desktop/.artifacts/real-cli.json
             desktop/.artifacts/installed-ui.json
             desktop/.artifacts/installed-ui.png
@@ -141,6 +142,7 @@ jobs:
             desktop/.artifacts/installed-ui-app.log
             desktop/.artifacts/installed-ui-processes.json
             desktop/.artifacts/installed-ui-window.png
+            desktop/.artifacts/installed-ui-server-*/
           # Early validation failures can leave no installer or acceptance evidence.
           # Still reject missing artifacts when every preceding step succeeded.
           if-no-files-found: ${{ job.status == 'success' && 'error' || 'warn' }}

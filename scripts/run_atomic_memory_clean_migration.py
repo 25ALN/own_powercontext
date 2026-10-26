@@ -57,7 +57,10 @@ def run_node(node: str, directory: Path) -> bool:
             "-vv",
             "-ra",
             "-o",
-            "faulthandler_timeout=120",
+            # The CPython watchdog walks other threads without the GIL and can
+            # itself segfault (python/cpython#116008). Keep native fault dumps;
+            # GNU timeout above enforces the per-process deadline independently.
+            "faulthandler_timeout=0",
             "--durations=20",
             "-o",
             f"cache_dir={directory / 'pytest-cache'}",

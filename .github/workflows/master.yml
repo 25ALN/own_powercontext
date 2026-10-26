@@ -19,6 +19,114 @@ jobs:
   changes:
     uses: ./.github/workflows/ci-changes.yml
 
+  upgrade-release-gate:
+    name: Upgrade release gate
+    runs-on: ubuntu-24.04
+    # Two source releases each run all twelve configurations; per-case deadlines remain unchanged.
+    timeout-minutes: 360
+    env:
+      PC_UPGRADE_OCEANBASE_URL: mysql+aoceanbase://root%40test:powercontext-e2e@127.0.0.1:2881/pc_upgrade_test?charset=utf8mb4
+      PC_UPGRADE_OCEANBASE_FRESH_URL: mysql+aoceanbase://root%40test:powercontext-e2e@127.0.0.1:2881/pc_upgrade_fresh?charset=utf8mb4
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+      - name: Verify upgrade policy and gate regressions
+        run: |
+          make upgrade-policy-check
+          uv run pytest -q tests/test_upgrade_release_gate.py tests/test_upgrade_publication.py
+      - name: Build the target artifact
+        run: uv build --out-dir dist
+      - name: Start the isolated upgrade OceanBase environment
+        uses: ./.github/actions/setup-upgrade-oceanbase
+
+      - name: Run declared installed-release acceptance
+        run: >-
+          uv run python scripts/run_upgrade_release_gate.py
+          --output "$RUNNER_TEMP/upgrade-release-evidence"
+      - name: Preserve OceanBase diagnostics
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/upgrade-release-evidence"
+          docker logs upgrade-oceanbase > "$RUNNER_TEMP/upgrade-release-evidence/oceanbase.log" 2>&1 || true
+          docker inspect --format '{{json .State}}' upgrade-oceanbase \
+            > "$RUNNER_TEMP/upgrade-release-evidence/oceanbase-state.json" 2>&1 || true
+      - name: Stop the isolated upgrade OceanBase environment
+        if: always()
+        run: docker rm --force upgrade-oceanbase
+      - name: Preserve upgrade acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: upgrade-release-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/upgrade-release-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  oceanbase-engine-recovery:
+    name: OceanBase engine crash recovery
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || fromJSON(needs.changes.outputs.suites || '{}').tests) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      POWERCONTEXT_TEST_MIGRATION_OCEANBASE_URL: mysql+aoceanbase://root%40test:powercontext-e2e@127.0.0.1:2881/pc_migration_probe_engine_crash?charset=utf8mb4
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+      - name: Start an isolated OceanBase engine
+        uses: ./.github/actions/setup-upgrade-oceanbase
+      - name: Bind the destructive probe to this job's owned container
+        run: |
+          docker exec upgrade-oceanbase \
+            obclient -h127.0.0.1 -P2881 -uroot@test -ppowercontext-e2e \
+            -e 'CREATE DATABASE pc_migration_probe_engine_crash;'
+          container_id=$(docker inspect --format '{{.Id}}' upgrade-oceanbase)
+          [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]
+          echo "POWERCONTEXT_TEST_MIGRATION_OCEANBASE_ENGINE_CRASH_ID=$container_id" >> "$GITHUB_ENV"
+      - name: Verify migration recovery after observer SIGKILL
+        run: |
+          mkdir -p "$RUNNER_TEMP/oceanbase-engine-recovery"
+          uv run pytest -q tests/native/test_oceanbase_engine_recovery.py \
+            --junitxml "$RUNNER_TEMP/oceanbase-engine-recovery/junit.xml" \
+            --basetemp "$RUNNER_TEMP/oceanbase-engine-recovery/cases"
+          uv run python - <<'PY'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree
+          path = Path(os.environ["RUNNER_TEMP"]) / "oceanbase-engine-recovery/junit.xml"
+          suites = list(ElementTree.parse(path).getroot().iter("testsuite"))
+          assert sum(int(s.get("tests", 0)) for s in suites) == 1
+          assert all(int(s.get(key, 0)) == 0 for s in suites for key in ("failures", "errors", "skipped"))
+          PY
+      - name: Report recovery failures
+        if: failure()
+        run: >-
+          uv run python .github/scripts/report_pytest_failures.py
+          "$RUNNER_TEMP/oceanbase-engine-recovery/junit.xml"
+      - name: Preserve diagnostics and stop the owned engine
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/oceanbase-engine-recovery"
+          docker logs upgrade-oceanbase > "$RUNNER_TEMP/oceanbase-engine-recovery/container.log" 2>&1 || true
+          docker stop --timeout 30 upgrade-oceanbase || true
+      - name: Save engine recovery evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: oceanbase-engine-recovery-${{ github.sha }}
+          path: ${{ runner.temp }}/oceanbase-engine-recovery/
+          if-no-files-found: error
+          retention-days: 7
+
   quality:
     timeout-minutes: 20
     runs-on: ubuntu-latest
@@ -277,7 +385,7 @@ jobs:
   code-seekdb:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || fromJSON(needs.changes.outputs.suites || '{}').database) }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -298,7 +406,9 @@ jobs:
         run: make code-seekdb-test
 
       - name: Test unified migrations with embedded seekdb
-        timeout-minutes: 10
+        # Full-Server cases run in separate processes and exceed fifteen minutes
+        # in aggregate; each runner keeps its 180-second deadline below.
+        timeout-minutes: 25
         env:
           POWERCONTEXT_TEST_MIGRATION_SEEKDB: "1"
           POWERCONTEXT_TEST_MIGRATION_SQL_LOG: "1"
@@ -359,7 +469,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || fromJSON(needs.changes.outputs.suites || '{}').database) }}
     name: Atomic Memory clean migration (SeekDB)
-    timeout-minutes: 50
+    timeout-minutes: 70
     runs-on: ubuntu-latest
     env:
       POWERCONTEXT_TEST_MIGRATION_SEEKDB: "1"
@@ -384,6 +494,17 @@ jobs:
           mkdir -p "$TMPDIR"
           uv run --locked --extra seekdb python scripts/run_atomic_memory_clean_migration.py \
             seekdb --output "$MIGRATION_REPORTS"
+
+      - name: Test concurrent managed startup without skips
+        # Collection and three isolated cases retain their 180s process deadlines.
+        timeout-minutes: 15
+        env:
+          TMPDIR: ${{ runner.temp }}/am-seekdb
+        run: |
+          uv run --locked --extra seekdb --extra server python scripts/run_atomic_memory_clean_migration.py \
+            seekdb --output "$MIGRATION_REPORTS/startup-snapshot" --tests \
+            tests/e2e/test_managed_startup_read_consistency.py
+          test "$(wc -l < "$MIGRATION_REPORTS/startup-snapshot/nodes.txt")" -eq 3
 
       - name: Test long-query retrieval and admission without skips
         timeout-minutes: 10

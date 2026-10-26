@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import typer
 from pydantic import ValidationError
+from sqlalchemy import inspect
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 
 from powercontext.builtin.persistence.oceanbase import OceanBaseConfig, OceanBaseProfile
@@ -44,6 +46,7 @@ from powercontext.builtin.runtime.config import BuiltinConfig
 from powercontext.builtin.runtime.processing_registry import canonical_processing_manifest
 from powercontext.cli.env_file import environment_context
 from powercontext.cli.inference_notice import write_inference_capability_notice
+from powercontext.server import database_migration
 from powercontext.server.app import access_readiness_checks
 from powercontext.server.authz import PrincipalRef
 from powercontext.server.authz.composition import open_builtin_access_control
@@ -117,15 +120,114 @@ def processing_migrate(
         str, typer.Option(help="Stable resume ID; use a new ID for an offline mode switch.")
     ] = "rfc1515",
     batch_size: Annotated[int, typer.Option(min=1, max=10000, help="Maximum rows committed per migration step.")] = 100,
+    evidence_dir: database_migration.EvidenceDir = None,
+    lock_coordination: database_migration.LockCoordination = None,
+    backup: Annotated[
+        database_migration.BackupPolicy | None, typer.Option(help="Managed storage backup policy.")
+    ] = None,
+    plan_id: Annotated[str | None, typer.Option(help="Exact managed Processing plan to accept.")] = None,
+    yes: Annotated[bool, typer.Option("--yes", help="Accept the managed Processing plan.")] = False,
+    backup_confirmed: Annotated[bool, typer.Option(help="Declare a manual backup exists.")] = False,
+    accept_no_backup: Annotated[bool, typer.Option(help="Accept the no-backup risk.")] = False,
+    backup_ref: Annotated[str | None, typer.Option(help="Operator manual backup reference.")] = None,
+    acknowledge_previous_run: Annotated[
+        str | None, typer.Option(help="OceanBase token confirming the previous remote maintenance ended.")
+    ] = None,
 ) -> None:
     """Plan, apply or verify the resumable artifact-processing schema migration."""
 
     if action == "apply" and not maintenance_confirmed:
         raise typer.BadParameter("apply requires --maintenance-confirmed after stopping old workers and writes")  # noqa: TRY003
+    env_file = resolve_server_environment_file(env_file, discover=True)
+    with database_migration._operator_errors(), server_settings_context(env_file=env_file) as settings:
+        managed = _managed_storage(settings.database)
+    if managed:
+        if action == "plan":
+            database_migration.plan(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                backup=backup or "auto",
+                bundle="processing",
+                migration_id=migration_id,
+                batch_size=batch_size,
+            )
+        elif action == "verify":
+            database_migration.verify(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                bundle="processing",
+                migration_id=migration_id,
+                batch_size=batch_size,
+            )
+        else:
+            database_migration.apply(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                bundle="processing",
+                migration_id=migration_id,
+                batch_size=batch_size,
+                backup=backup,
+                plan_id=plan_id,
+                yes=yes,
+                maintenance_confirmed=maintenance_confirmed,
+                backup_confirmed=backup_confirmed,
+                accept_no_backup=accept_no_backup,
+                backup_ref=backup_ref,
+                acknowledge_previous_run=acknowledge_previous_run,
+            )
+        return
     with server_settings_context(env_file=env_file) as settings:
         ready = asyncio.run(_processing_maintenance(settings, action, migration_id=migration_id, batch_size=batch_size))
     if not ready:
         raise typer.Exit(code=1)
+
+
+def _managed_storage(
+    database: SQLiteConfig | SeekDBConfig | OceanBaseConfig, *, allow_historical: bool = False
+) -> bool:
+    """Inspect ownership before a compatibility command may open a writable profile."""
+    from powercontext.builtin.persistence.migrations.connections import MaintenanceConnections
+    from powercontext.server.identity import SERVER_IDENTITY_TABLE
+
+    def owned(connection):
+        if connection is None:
+            return False
+        tables = inspect(connection).get_table_names()
+        if "pc_schema_revision" in tables:
+            return True
+        # Ownership is independent of release and optional configuration. The
+        # shared runner must validate the complete source before any writes;
+        # an unknown or misconfigured Server must not fall back to SDK upkeep.
+        server_owned = SERVER_IDENTITY_TABLE.name in tables
+        if server_owned and not allow_historical:
+            raise database_migration.MigrationError(
+                "migration_required",
+                "Complete the registered full Server upgrade before partial maintenance.",
+            )
+        return server_owned
+
+    if isinstance(database, SQLiteConfig) and not database.is_persistent:
+        return False
+    if not isinstance(database, SQLiteConfig) or not make_url(database.url).query:
+        return MaintenanceConnections(database).run(lambda connection, identity, guard: owned(connection))
+
+    async def inspect_sqlite():
+        try:
+            async with (
+                SQLiteProfile.open_readonly(database) as profile,
+                profile.database.transaction() as connection,
+            ):
+                return await connection.run_sync(owned)
+        except OperationalError as error:
+            code = getattr(error.orig, "sqlite_errorcode", None)
+            if isinstance(code, int) and code & 0xFF == SQLITE_CANTOPEN:
+                return False
+            raise
+
+    return asyncio.run(inspect_sqlite())
 
 
 async def _processing_maintenance(
@@ -230,6 +332,19 @@ def atomic_memory_migrate(
         Path | None,
         typer.Option(help="JSON attestations establishing Owners for ownerless legacy Memory entries."),
     ] = None,
+    evidence_dir: database_migration.EvidenceDir = None,
+    lock_coordination: database_migration.LockCoordination = None,
+    backup: Annotated[
+        database_migration.BackupPolicy | None, typer.Option(help="Managed storage backup policy.")
+    ] = None,
+    plan_id: Annotated[str | None, typer.Option(help="Exact managed Server plan to accept.")] = None,
+    yes: Annotated[bool, typer.Option("--yes", help="Accept the managed Server plan.")] = False,
+    backup_confirmed: Annotated[bool, typer.Option(help="Declare a manual backup exists.")] = False,
+    accept_no_backup: Annotated[bool, typer.Option(help="Accept the no-backup risk.")] = False,
+    backup_ref: Annotated[str | None, typer.Option(help="Operator manual backup reference.")] = None,
+    acknowledge_previous_run: Annotated[
+        str | None, typer.Option(help="OceanBase token confirming the previous remote maintenance ended.")
+    ] = None,
 ) -> None:
     """Archive Memory v1, convert its history and references to Atomic Memory, and remove it from public tables."""
 
@@ -247,6 +362,45 @@ def atomic_memory_migrate(
         )
     except (OSError, ValueError, TypeError, KeyError) as error:
         raise typer.BadParameter(f"invalid decision file: {error}") from error  # noqa: TRY003
+    env_file = resolve_server_environment_file(env_file, discover=True)
+    with database_migration._operator_errors(), server_settings_context(env_file=env_file) as settings:
+        managed = _managed_storage(settings.database, allow_historical=True)
+    if managed:
+        if decisions is not None or owner_decisions is not None:
+            raise typer.BadParameter(  # noqa: TRY003
+                "decision files apply only to the unmanaged legacy Memory conversion, not the registered Server chain"
+            )
+        if action == "plan":
+            database_migration.plan(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                backup=backup or "auto",
+                bundle="server",
+            )
+        elif action == "verify":
+            database_migration.verify(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                bundle="server",
+            )
+        else:
+            database_migration.apply(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                bundle="server",
+                backup=backup,
+                plan_id=plan_id,
+                yes=yes,
+                maintenance_confirmed=maintenance_confirmed,
+                backup_confirmed=backup_confirmed,
+                accept_no_backup=accept_no_backup,
+                backup_ref=backup_ref,
+                acknowledge_previous_run=acknowledge_previous_run,
+            )
+        return
     with server_settings_context(env_file=env_file) as settings:
         try:
             ready = asyncio.run(
@@ -276,13 +430,69 @@ def atomic_memory_migrate(
 @app.command("atomic-memory-rebuild-projection")
 def atomic_memory_rebuild_projection(
     env_file: Annotated[Path | None, typer.Option(help="Load the deployment's settings.")] = None,
+    action: Annotated[
+        Literal["plan", "apply", "verify"], typer.Option(help="Managed projection maintenance action.")
+    ] = "apply",
     maintenance_confirmed: Annotated[
         bool, typer.Option(help="Confirm every API, host and Worker is stopped and input writes are paused.")
     ] = False,
     batch_size: Annotated[int, typer.Option(min=1, max=1000, help="Identities read per maintenance batch.")] = 100,
+    evidence_dir: database_migration.EvidenceDir = None,
+    lock_coordination: database_migration.LockCoordination = None,
+    backup: Annotated[
+        database_migration.BackupPolicy | None, typer.Option(help="Managed storage backup policy.")
+    ] = None,
+    plan_id: Annotated[str | None, typer.Option(help="Exact managed projection plan to accept.")] = None,
+    yes: Annotated[bool, typer.Option("--yes", help="Accept the managed projection plan.")] = False,
+    backup_confirmed: Annotated[bool, typer.Option(help="Declare a manual backup exists.")] = False,
+    accept_no_backup: Annotated[bool, typer.Option(help="Accept the no-backup risk.")] = False,
+    backup_ref: Annotated[str | None, typer.Option(help="Operator manual backup reference.")] = None,
+    acknowledge_previous_run: Annotated[
+        str | None, typer.Option(help="OceanBase token confirming the previous remote maintenance ended.")
+    ] = None,
 ) -> None:
     """Rebuild active Atomic Memory search rows from existing authority."""
 
+    env_file = resolve_server_environment_file(env_file, discover=True)
+    with database_migration._operator_errors(), server_settings_context(env_file=env_file) as settings:
+        managed = _managed_storage(settings.database)
+    if managed:
+        if action == "plan":
+            database_migration.plan(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                backup=backup or "auto",
+                bundle="atomic-projection",
+                batch_size=batch_size,
+            )
+        elif action == "verify":
+            database_migration.verify(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                bundle="atomic-projection",
+                batch_size=batch_size,
+            )
+        else:
+            database_migration.apply(
+                env_file=env_file,
+                evidence_dir=evidence_dir,
+                lock_coordination=lock_coordination,
+                bundle="atomic-projection",
+                batch_size=batch_size,
+                backup=backup,
+                plan_id=plan_id,
+                yes=yes,
+                maintenance_confirmed=maintenance_confirmed,
+                backup_confirmed=backup_confirmed,
+                accept_no_backup=accept_no_backup,
+                backup_ref=backup_ref,
+                acknowledge_previous_run=acknowledge_previous_run,
+            )
+        return
+    if action != "apply":
+        raise typer.BadParameter("plan and verify require managed Server storage")  # noqa: TRY003
     if not maintenance_confirmed:
         raise typer.BadParameter("projection rebuild requires --maintenance-confirmed after stopping every writer")  # noqa: TRY003
     with server_settings_context(env_file=env_file) as settings:
@@ -540,6 +750,9 @@ async def _run_background_async(settings: ServerSettings, tracing: Any) -> None:
         inference=settings.inference,
         external_skills=settings.external_skills,
     )
+    from powercontext.builtin.persistence.migrations.server_readiness import prepare_server_storage
+
+    await asyncio.to_thread(prepare_server_storage, settings)
     metrics = ServerMetrics(role="background") if settings.metrics.enabled else None
     stopped = asyncio.Event()
     loop = asyncio.get_running_loop()

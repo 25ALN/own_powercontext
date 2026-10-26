@@ -18,13 +18,22 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import MetaData, Table, text
+from sqlalchemy import MetaData, Table, inspect, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 
 async def create_tables(connection: AsyncConnection, tables: Sequence[Table], /) -> None:
-    """Create missing tables and indexes using SQLAlchemy's native metadata support."""
+    """Create selected tables only for unmanaged storage; managed schemas are read-only."""
 
+    names = await connection.run_sync(lambda sync: set(inspect(sync).get_table_names()))
+    if "pc_schema_revision" in names:
+        if not {table.name for table in tables} <= names:
+            from powercontext.builtin.persistence.migrations.models import MigrationError
+
+            raise MigrationError(
+                "unsupported_configuration", "The versioned database does not cover the requested feature tables."
+            )
+        return
     groups: dict[MetaData, list[Table]] = {}
     for table in tables:
         groups.setdefault(table.metadata, []).append(table)

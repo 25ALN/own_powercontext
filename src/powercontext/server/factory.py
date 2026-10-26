@@ -183,6 +183,13 @@ def create_server_app(  # noqa: C901
             _log_insecure_remote_http_warning()
         if isinstance(config.database, SQLiteConfig) and config.database.is_in_memory:
             _log_in_memory_database_warning()
+        from powercontext.builtin.persistence.migrations.server_readiness import prepare_server_storage
+
+        await asyncio.to_thread(
+            prepare_server_storage,
+            resolved,
+            embedding_profile=None if embedding_model is None else embedding_model.profile,
+        )
         configured_cursor_secret = (
             None if resolved.cursor_signing_secret is None else resolved.cursor_signing_secret.get_secret_value()
         )

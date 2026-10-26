@@ -192,6 +192,10 @@ def test_real_seekdb_percent_checks_validate_data_and_plan(
         layout = json.loads(path.read_text())
         layout["mysql"].append(ddl)
         path.write_text(json.dumps(layout, ensure_ascii=False))
+    path = directory / "mysql_layouts.json"
+    layouts = json.loads(path.read_text())
+    layouts["revisions"]["p0001"].append(ddl)
+    path.write_text(json.dumps(layouts), encoding="utf-8")
     bundle = MigrationBundle(directory)
     schema = MySQLSchema(bundle)
     connections = MaintenanceConnections(SeekDBConfig(path=short_tmp_path / "seekdb"))
@@ -219,6 +223,20 @@ def test_real_seekdb_percent_checks_validate_data_and_plan(
             schema.validate_data(connection, "p0001")
 
     with _seekdb_scenario_lifetime(monkeypatch):
+        fresh = MySQLMigrationRunner(
+            MaintenanceConnections(SeekDBConfig(path=short_tmp_path / "fresh_seekdb")),
+            bundle,
+            evidence_directory=short_tmp_path / "fresh_evidence",
+        )
+        fresh_plan = fresh.plan(backup_policy="skip")
+        fresh.apply(
+            plan_id=fresh_plan.plan_id,
+            accepted=True,
+            maintenance_confirmed=True,
+            backup_policy="skip",
+            accept_no_backup=True,
+        )
+        assert fresh.verify().state == "ready"
         connections.run(prepare, writable=True)
         assert runner.plan().state == "migration_required"
         connections.run(invalidate, writable=True)

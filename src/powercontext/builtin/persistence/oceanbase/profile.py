@@ -121,6 +121,7 @@ class OceanBaseProfile:
         config: OceanBaseConfig,
         *,
         tables: tuple[Table, ...],
+        _archive_recovery: bool = False,
     ) -> AsyncIterator[OceanBaseProfile]:
         """Create, initialize and exclusively own an official OceanBase engine."""
 
@@ -137,7 +138,9 @@ class OceanBaseProfile:
             pool_pre_ping=config.pool_pre_ping,
         )
         database = AsyncDatabase.own(engine)
-        async with _initialized_profile(cls(database=database, tables=tables)) as profile:
+        async with _initialized_profile(
+            cls(database=database, tables=tables), _archive_recovery=_archive_recovery
+        ) as profile:
             yield profile
 
     @classmethod
@@ -157,11 +160,13 @@ class OceanBaseProfile:
 
 
 @asynccontextmanager
-async def _initialized_profile(profile: OceanBaseProfile) -> AsyncIterator[OceanBaseProfile]:
+async def _initialized_profile(
+    profile: OceanBaseProfile, *, _archive_recovery: bool = False
+) -> AsyncIterator[OceanBaseProfile]:
     try:
         async with profile.database.transaction() as connection:
             await _require_mysql_tenant(connection)
-        await assert_dream_schema_ready(profile.database.engine)
+        await assert_dream_schema_ready(profile.database.engine, _archive_recovery=_archive_recovery)
         if profile.tables:
             await prepare_topic_memory_recovery_schema(
                 profile.database.engine, initialize=any(table.name == BUDGET for table in profile.tables)

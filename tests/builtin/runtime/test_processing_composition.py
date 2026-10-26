@@ -188,8 +188,8 @@ def test_partial_migration_refuses_split_role_startup(
         # Exercise the OceanBase role's real startup gate against a real SQLite
         # transaction. A failed gate must run before dialect-specific indexes.
         @asynccontextmanager
-        async def local_profile(_config, *, tables):
-            async with SQLiteProfile.open(database, tables=tables) as profile:
+        async def local_profile(_config, *, tables, _archive_recovery=False):
+            async with SQLiteProfile.open(database, tables=tables, _archive_recovery=_archive_recovery) as profile:
                 yield profile
 
         monkeypatch.setattr(composition.OceanBaseProfile, "open", local_profile)

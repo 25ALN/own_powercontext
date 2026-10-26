@@ -67,6 +67,7 @@ from powercontext.server.settings import (
     ServerSettings,
 )
 from tests.e2e.dream_support import atomic_memory_pipeline, memory_source_text
+from tests.e2e.server_storage import prepare_server_database
 
 ADMIN = PrincipalRef(type="service", id="admin")
 RECEIVER = PrincipalRef(type="user", id="bob")
@@ -101,6 +102,7 @@ class _ContentMemoryPipeline:
 def test_logical_handoff_grant_and_revoke_cross_the_public_server_boundary(tmp_path: Path) -> None:
     async def scenario() -> None:
         database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'runtime.db'}")
+        await asyncio.to_thread(prepare_server_database, ServerSettings(database=database))
         async with open_builtin_access_control(
             database,
             bootstrap_administrators=(ADMIN,),
@@ -267,6 +269,7 @@ def test_logical_handoff_grant_and_revoke_cross_the_public_server_boundary(tmp_p
 def test_base_source_and_artifact_routes_preserve_access_boundaries(tmp_path: Path) -> None:
     async def scenario() -> None:
         database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'base-access-runtime.db'}")
+        await asyncio.to_thread(prepare_server_database, ServerSettings(database=database))
         async with open_builtin_access_control(
             database,
             bootstrap_administrators=(ADMIN,),
@@ -416,6 +419,7 @@ def test_base_source_and_artifact_routes_preserve_access_boundaries(tmp_path: Pa
 def test_query_parameters_cannot_override_path_authorization(tmp_path: Path) -> None:
     async def scenario() -> None:
         database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'query-path-authz.db'}")
+        await asyncio.to_thread(prepare_server_database, ServerSettings(database=database))
         async with open_builtin_access_control(
             database,
             bootstrap_administrators=(ADMIN,),
@@ -581,6 +585,7 @@ def test_resource_discovery_includes_base_artifacts_under_scope_grants(
 ) -> None:
     async def scenario() -> None:
         database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'discovery.db'}")
+        await asyncio.to_thread(prepare_server_database, ServerSettings(database=database))
         open_access = open_builtin_access_control if provider == "builtin" else open_casbin_access_control
         async with open_access(
             database, bootstrap_administrators=(ADMIN,), deployment_id=DEPLOYMENT_ID
@@ -681,6 +686,7 @@ def test_resource_discovery_includes_base_artifacts_under_scope_grants(
 def test_server_administrators_discover_managed_resources_without_content_access(tmp_path: Path, provider: str) -> None:
     async def scenario() -> None:
         database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'admin-discovery.db'}")
+        await asyncio.to_thread(prepare_server_database, ServerSettings(database=database))
         open_access = open_builtin_access_control if provider == "builtin" else open_casbin_access_control
         async with open_access(
             database, bootstrap_administrators=(ADMIN,), deployment_id=DEPLOYMENT_ID
@@ -777,6 +783,7 @@ def test_server_administrators_discover_managed_resources_without_content_access
 def test_tag_owners_and_exact_viewers_preserve_scope_boundaries(tmp_path: Path, family: str) -> None:
     async def scenario() -> None:
         database = SQLiteConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'tags.db'}")
+        await asyncio.to_thread(prepare_server_database, ServerSettings(database=database))
         async with open_builtin_access_control(
             database, bootstrap_administrators=(ADMIN,), deployment_id=DEPLOYMENT_ID
         ) as access:

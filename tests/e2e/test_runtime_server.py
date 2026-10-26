@@ -47,6 +47,7 @@ from powercontext.builtin.artifacts.memory import (
 )
 from powercontext.builtin.artifacts.memory.errors import InvalidMemoryCandidateError
 from powercontext.builtin.inference import EmbeddingResult, GenerationResult, InferenceConfigurationError
+from powercontext.builtin.persistence.migrations.deployment import deployment_runner
 from powercontext.builtin.persistence.oceanbase import OceanBaseConfig, OceanBaseProfile
 from powercontext.builtin.persistence.sqlite import SQLiteConfig
 from powercontext.builtin.runtime import (
@@ -201,15 +202,38 @@ def _server_settings(
     )
 
 
+def _initialize_remote_server_storage(
+    settings: ServerSettings, tmp_path: Path, *, embedding_profile: EmbeddingProfile | None = None
+) -> None:
+    if not isinstance(settings.database, OceanBaseConfig):
+        return
+    runner = deployment_runner(
+        settings,
+        evidence_dir=tmp_path / "migration-evidence",
+        lock_coordination="single-host",
+        embedding_profile=embedding_profile,
+    )
+    plan = runner.plan(backup_policy="skip")
+    result = runner.apply(
+        plan_id=plan.plan_id,
+        backup_policy="skip",
+        accepted=True,
+        maintenance_confirmed=True,
+        accept_no_backup=True,
+    )
+    assert result.state == "ready"
+    assert result.readiness_scope == "server"
+
+
 @pytest.mark.parametrize("database_kind", ["sqlite", "oceanbase"])
 def test_server_databases_share_source_to_memory_search_behavior(
     database: SQLiteConfig | OceanBaseConfig,
+    tmp_path: Path,
 ) -> None:
+    settings = ServerSettings(database=database, mcp=McpConfig(enabled=False))
+    _initialize_remote_server_storage(settings, tmp_path)
     app = create_server_app(
-        settings=ServerSettings(
-            database=database,
-            mcp=McpConfig(enabled=False),
-        ),
+        settings=settings,
         candidate_pipeline=atomic_memory_pipeline(ContentCandidatePipeline()),
     )
 
@@ -384,12 +408,13 @@ def test_working_note_http_and_sdk_capture_stays_out_of_memory(tmp_path: Path) -
 @pytest.mark.parametrize("database_kind", ["sqlite", "oceanbase"])
 def test_server_databases_keep_case_and_accent_variant_identities_distinct(
     database: SQLiteConfig | OceanBaseConfig,
+    tmp_path: Path,
 ) -> None:
     marker = uuid4().hex[:12]
     memory_text = "Rotate the production signing key every ninety days."
-    app = create_server_app(
-        settings=ServerSettings(database=database, mcp=McpConfig(enabled=False)),
-    )
+    settings = ServerSettings(database=database, mcp=McpConfig(enabled=False))
+    _initialize_remote_server_storage(settings, tmp_path)
+    app = create_server_app(settings=settings)
 
     async def scenario() -> None:
         async with (
@@ -820,12 +845,12 @@ def test_sdk_closes_the_delegation_handoff_and_outcome_loop(tmp_path: Path) -> N
 @pytest.mark.parametrize("database_kind", ["sqlite", "oceanbase"])
 def test_server_databases_share_vector_and_hybrid_search_behavior(
     database: SQLiteConfig | OceanBaseConfig,
+    tmp_path: Path,
 ) -> None:
+    settings = ServerSettings(database=database, mcp=McpConfig(enabled=False))
+    _initialize_remote_server_storage(settings, tmp_path, embedding_profile=EMBEDDING_PROFILE)
     app = create_server_app(
-        settings=ServerSettings(
-            database=database,
-            mcp=McpConfig(enabled=False),
-        ),
+        settings=settings,
         candidate_pipeline=atomic_memory_pipeline(ContentCandidatePipeline()),
         embedding_model=KeywordEmbeddingModel(),
     )

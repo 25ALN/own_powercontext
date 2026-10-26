@@ -197,7 +197,7 @@ def test_contract_uses_the_namespaced_request_id_header() -> None:
 def test_server_info_contract_is_observable_and_forward_compatible() -> None:
     contract = yaml.safe_load(CONTRACT_PATH.read_text())
 
-    assert contract["info"]["version"] == "1.4.0"
+    assert contract["info"]["version"] == "1.4.1"
     operation = contract["paths"]["/v1/server-info"]["get"]
     assert operation["operationId"] == "get_server_info"
     assert operation["x-powercontext-access"] == {

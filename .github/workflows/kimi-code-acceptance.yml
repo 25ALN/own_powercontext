@@ -135,6 +135,8 @@ jobs:
           reports.mkdir(exist_ok=True)
           for evidence in (temporary / "kimi-acceptance").glob("*/evidence.json"):
               shutil.copy2(evidence, reports / (evidence.parent.name + ".json"))
+          for evidence in (temporary / "kimi-acceptance").glob("*/server-startup.json"):
+              shutil.copy2(evidence, reports / (evidence.parent.name + "-server-startup.json"))
           PY
 
       - name: Upload controlled acceptance evidence

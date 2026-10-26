@@ -47,7 +47,7 @@ from powercontext.builtin.persistence.tables import (
 VALID_URL = "mysql+aoceanbase://root%40tenant:secret@127.0.0.1:2881/powercontext?charset=utf8mb4"
 
 
-async def _skip_dream_preflight(_engine: AsyncEngine) -> None:
+async def _skip_dream_preflight(_engine: AsyncEngine, *, _archive_recovery: bool = False) -> None:
     """These profile unit tests use engine doubles; read-only preflight has integration coverage."""
 
 

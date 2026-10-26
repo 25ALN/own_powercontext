@@ -127,6 +127,21 @@ def _apply(runner):
     return runner.apply(plan_id=runner.plan().plan_id, accepted=True, maintenance_confirmed=True)
 
 
+@pytest.mark.parametrize("revision", ["s1401", "unknown-future"])
+def test_topic_bundle_refuses_managed_server_storage_before_backup_or_writes(tmp_path, revision):
+    path = tmp_path / "managed-topic.db"
+    config, _ = _legacy(path)
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute("CREATE TABLE pc_schema_revision (version_num VARCHAR(32) PRIMARY KEY NOT NULL)")
+        connection.execute("INSERT INTO pc_schema_revision VALUES (?)", (revision,))
+    original = path.read_bytes()
+    runner = TopicMemoryRecoveryMigrationRunner(config)
+    with pytest.raises(MigrationError, match="unsupported_target"):
+        _apply(runner)
+    assert path.read_bytes() == original
+    assert not path.with_name(path.name + ".pc-migration-state").exists()
+
+
 @pytest.fixture
 def atomic_maintenance_database(tmp_path, monkeypatch):
     path = tmp_path / "atomic-maintenance.db"

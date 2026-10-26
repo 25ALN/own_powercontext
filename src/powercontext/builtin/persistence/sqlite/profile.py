@@ -97,6 +97,7 @@ class SQLiteProfile:
         *,
         tables: tuple[Table, ...],
         load_vector_extension: bool = False,
+        _archive_recovery: bool = False,
     ) -> AsyncIterator[SQLiteProfile]:
         """Create, initialize and exclusively own one SQLite engine."""
 
@@ -114,7 +115,7 @@ class SQLiteProfile:
         database = AsyncDatabase.own(engine, shared_connection=not config.is_persistent)
         profile = cls(database=database, tables=tables)
         try:
-            await assert_dream_schema_ready(engine)
+            await assert_dream_schema_ready(engine, _archive_recovery=_archive_recovery)
             if tables:
                 await prepare_topic_memory_recovery_schema(
                     engine, initialize=any(table.name == BUDGET for table in tables)

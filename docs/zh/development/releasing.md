@@ -53,6 +53,7 @@ beta 和 RC 跳过网站条目检查。`make docs-test` 也会通过网站测试
 | 来源 | 自动管理的内容 |
 | --- | --- |
 | `openapi/powercontext.yaml` | `info.version`，作为待发布版本。 |
+| `release/upgrade-support.json` | 目标发布版本；来源版本和支持策略需要单独进行兼容性审查。 |
 | `src/powercontext/http/_generated/` | `operations.py` 的 `API_VERSION` 和 `schema.py` 的 `info.version`，通过 `make api-generate` 重新生成。 |
 | `README.md`、`README_CN.md`、`README_JP.md` | 当前版本介绍、固定包版本的安装命令及配套 Agent 集成 tag。 |
 | `docs/en/docs/get-started/quickstart.md`、`docs/zh/docs/get-started/quickstart.md` | 当前版本介绍及匹配的安装命令、tag。 |
@@ -118,6 +119,58 @@ DSH 的 `pack:release` 先构建再给包 manifest 写入版本，而写版本�
 DSH README 中说明某项能力已包含在 `1.1.0` 的文字同样属于历史说明，仅其当前安装命令中的版本参与同步。
 
 ## 发布前验证
+
+### 数据库升级支持范围
+
+`release/upgrade-support.json` 声明目标版本、来源版本选择策略、后端和配置。`automatic_sources` 继续将 1.3.0
+作为固定基线，显式 `cases` 为空。共要求 12 个组合：一个来源 × 三种后端 × 向量开关 × Code 开关。
+目标始终是本次 CI 构建的实际 wheel；后续目标发布版本继续测试 1.3.0，不自动加入中间发行版。
+1.4.0 桥接实现和登记仍保留，但不纳入 CI 升级验收；门禁通过不能证明该路径已通过验收。来源 wheel 的公开 PyPI 地址和 SHA-256 与目标产物一起记录。
+
+1.3.0 的来源链为 `s1300 → s1400 → s1401 → s1402`，1.4.0 为 `r1400 → s1400 → s1401 → s1402`。两者共享目标
+契约，分别保留冻结的执行历史及日志来源链，以便后续已登记版本继续升级。应用版本不等于 schema 检查点；1.4.0
+的 Candidate 已是当前格式，桥接原样保留记录，并创建空保留表以统一目标结构，不虚构旧 Candidate 历史。
+登记其他来源需要精确采集、明确桥接和真实验收；这两条已登记路径不能证明其间及目标之前所有发行版均兼容。
+当前 `upgrade-required` 策略强制执行三种后端的正向升级验收，同时保持“升级支持尚未验证”的声明。
+所有配置均使用 `tests/release_upgrades/test_full_server.py`，迁移能力缺失必须失败。仅支持新建数据库的声明或
+正确拒绝旧库，都不能满足门禁。完整迁移实现和验收通过后，审查支持范围，将模式改为 `supported-upgrades`，
+并在发布前重新生成安装说明；两种模式都运行相同的必测矩阵。
+验收契约和证据要求见仓库中的 `tests/release_upgrades/README.md`。
+
+`make check` 和 `make release-check` 会核对策略及双语安装说明。受管持久化文件变化时，必须审查兼容性影响，
+更新摘要和理由。摘要用于触发审查，本身不证明迁移正确。受管文本的哈希会将 CRLF 归一为 LF，避免检出行尾
+差异误报兼容性变更；发行包哈希仍覆盖完整原始字节。`make version-bump` 同时更新策略中的目标版本；
+支持矩阵变化后，运行 `uv run python scripts/upgrade_release_gate.py --write-docs` 更新安装说明中的支持范围。
+
+将唯一的目标 wheel 和配套源码包构建到 `dist/` 后，执行声明的升级组合验收：
+
+```bash
+make upgrade-release-test
+uv run python scripts/run_upgrade_release_gate.py --release --release-notes /path/to/release-notes.md
+```
+
+发布输入目录必须只有一个 wheel 和一个配套的 `.tar.gz` 源码包；残留发行包和其他文件都会使检查失败，
+`uv` 生成的 `.gitignore` 不作为发行产物。门禁检查源码包元数据，并从该源码包实际重建 wheel，逐项比较归档中的
+文件内容，仅排除派生的 `RECORD` 哈希清单。因此，同版本但内容过期的源码包也无法绕过检查。归档时间戳和压缩
+方式不影响比较；构建工具变化导致内容不一致时，需要重新构建整组产物，不能忽略差异。
+
+门禁验收输入文件的独立副本，在 `publication.json` 中记录实际 SHA-256，并且只有全部通过才将文件输出到证据目录
+下的 `validated-dist/`，供 CI 上传。`make publish` 使用 `--release --publish` 在同一次调用中上传这些确切路径；
+验收期间原 `dist/` 的变化不会混入上传。未指定 `--publish` 的验收命令不会发布软件包。
+
+发布检查要求实际 wheel 版本与策略一致，发布说明包含安装指南中的完整英文支持声明。每个组合分别安装准确的
+旧版发行包和目标 wheel。测试缺失、后端跳过、执行失败或证据缺失都会阻断检查。仅通过静态策略检查不表示
+存在升级路径。普通 PR 构建允许使用开发版本；`--release` 必须验证最终 tag 构建的 wheel，不能覆盖版本号。
+
+CI 中的 **Upgrade release gate** 要求真实 1.3.0 数据库在全部 12 个登记组合中通过公开命令迁移、
+完整 Server 就绪验证、目标版本启动、历史数据读取和新增写入。局部迁移验证返回 `server_ready=false` 也会失败。一个后端失败后，仍继续执行其他后端，
+分别保存结果和日志。seekDB 直接在 runner 临时目录中以嵌入式启动；PR 和发布工作流均启动隔离的 OceanBase CE
+容器，等待 MySQL 租户就绪，归档诊断并在测试失败时也清理容器，不依赖外部数据库凭据。
+任一后端无法启动都使检查失败，不能跳过。历史拒绝行为回归不参与正向升级门禁。
+仓库管理员需要在分支保护中将该检查设为必需。
+发布工作流只有验收通过才会上传发行包、发布 PyPI 和上传 Release 附件，并归档验收证据。工作流在
+`release.published` 后运行，无法阻止之前手动发布 GitHub Release 页面，因此必须先运行上述命令再发布页面。
+`make publish` 要求提供 `UPGRADE_RELEASE_NOTES=/path/to/release-notes.md`，并在上传软件包之前执行相同门禁。
 
 针对本次发布的完整变化运行检查，包括生成的契约和文档：
 
