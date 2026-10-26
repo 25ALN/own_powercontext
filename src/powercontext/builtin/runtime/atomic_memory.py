@@ -596,7 +596,7 @@ class ScopedAtomicMemory:
                 text="validation",
                 description="validation",
             )
-        mode, vector, query_embedding, embedding_calls = await self._resolve_query_embedding(
+        mode, vector, query_embedding, embedding_calls, embedding_fallback = await self._resolve_query_embedding(
             query,
             mode,
             query_embedding,
