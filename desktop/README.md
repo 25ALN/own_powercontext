@@ -96,9 +96,23 @@ Search uses FTS in the selected Scope and returns at most 10 matches. This is no
 
 A successful save that returns no memory record is reported as an operation success without inventing a reference. A timeout or interrupted dispatched write is **unknown**, not a safe invitation to retry: inspect the original Server/Scope before deciding whether to submit again. Identical text alone cannot identify that operation. Desktop does not automatically replay writes or keep an offline queue. Switching context hides old results while retaining minimal original-operation metadata for this session. See [validation guide](VALIDATION.md) for tested behavior and qualification gaps.
 
+## Current-Scope inventory and usage
+
+In **Overview**, explicitly activate a qualified connection, select an exact Scope,
+choose **Today**, **Last 7 days** or **Last 30 days**, then press **Load statistics**.
+The view displays the Server timestamp, Scope coverage, inventory snapshot,
+recorded UTC model usage and recall token estimates. Missing token counts remain
+**Unknown**; estimates are not billing savings or quality scores. Every chart has
+an equivalent table and keyboard-scrollable region. A statistics error does not
+disable independent Memory actions. See the [developer contract](../docs/en/development/desktop-statistics.md)
+and [qualification evidence](VALIDATION.md#current-scope-statistics-qualification).
+
+Statistics require the explicit `sqlite-stats-31ecdd61-v1` profile; the separately
+qualified `sqlite-atomic-98275dbb-v1` profile covers Memory operations only.
+
 ## Contracts and resources
 
-`pnpm --dir desktop generate` derives TypeScript schemas, the reviewed ten-operation manifest, and the Rust wire models from `openapi/powercontext.yaml`; `generate:check` detects drift, including a normalized contract SHA-256. The OpenAPI Generator CLI version is pinned in `desktop/openapitools.json`, and the limited Rust customization lives in `desktop/scripts/openapi-generator/rust/`. Generated `src-tauri/src/transport/wire.rs` must not be edited by hand: after changing the contract or generator template, run `pnpm --dir desktop generate`, then run `pnpm --dir desktop generate:check` in CI. Typed Rust adapters consume that generated manifest and generated wire schemas. No public route is independently handwritten in the application. The manifest is not an IPC permission grant.
+`pnpm --dir desktop generate` derives TypeScript schemas, the reviewed eleven-operation manifest, and the Rust wire models from `openapi/powercontext.yaml`; `generate:check` detects drift, including a normalized contract SHA-256. The OpenAPI Generator CLI version is pinned in `desktop/openapitools.json`, and the limited Rust customization lives in `desktop/scripts/openapi-generator/rust/`. Generated `src-tauri/src/transport/wire.rs` must not be edited by hand: after changing the contract or generator template, run `pnpm --dir desktop generate`, then run `pnpm --dir desktop generate:check` in CI. Typed Rust adapters consume that generated manifest and generated wire schemas. No public route is independently handwritten in the application. The manifest is not an IPC permission grant.
 
 `cargo run --locked --manifest-path desktop/src-tauri/Cargo.toml --example export_ipc` derives the TypeScript IPC request/receipt/error types from Rust. `ipc:check` verifies them. IPC exposes typed connection, Scope, memory and diagnostic operations to the main window only; no generic fetch, shell, file, database or secret-read command is granted.
 

@@ -22,11 +22,89 @@ cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
 ## Compatibility scope
 
-[compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-atomic-98275dbb-v1` below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-atomic-1da99747-v1`, `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
+[compatibility.json](src-tauri/src/connections/compatibility.json) preserves the recorded Server sources, normalized OpenAPI contract digests and qualification-wheel digests for the historical profiles below. The current contract is qualified by `sqlite-stats-31ecdd61-v1` (including statistics) and `sqlite-atomic-98275dbb-v1` (Memory operations) below; ordinary builds require explicitly selecting it and checking the connection before business operations become available. The `sqlite-stats-1da99747-v1`, `sqlite-atomic-1da99747-v1`, `sqlite-atomic-d9a78567-v1`, `sqlite-atomic-caf2a35a-v1`, `sqlite-atomic-683e2db0-v1` and `sqlite-atomic-cab054db-v1` records qualify their corresponding Server source deployments and do not match this bundled contract. Historical records are disabled in the selector, and saved unavailable selections remain visible until explicitly replaced. CI builds have their own artifact identities and do not change product qualification.
 
 The real Server harness covers SQLite with anonymous loopback, static Bearer, HTTPS with explicit CA/base path, and injected-provider/enforced access. It exercises save/search/exact reads, identity changes, binding revocation, ambiguous writes without replay and Scope pagination. Installed UI checks cover repeated launches preserving the existing editor, late committed-save responses preserving a new Scope draft, explicit connection/Scope selection, clipboard copies, connection isolation, draft cancellation, byte limits and independent Server survival after Desktop exit.
 
 Selecting a compatibility profile does not attest the remote binary identity. Existing `sqlite-1.1.1-v1` / `sqlite-63f918b7-v1` / `sqlite-ab43e3a7-v1` / `sqlite-f1089f4e-v1` / `sqlite-6e237568-v1` / `sqlite-legacy-58f7f4f6-v1` selections require explicitly choosing an available matching profile and rechecking the connection. Desktop reads memories only through Atomic Memory references, so Servers that answer only with Memory entry citations are not qualified. CLI diagnostics separately verify the registered executable path and digest, then validate the diagnostic response schema. The observed version is optional report information; a registration does not require a version.
+
+### Current-Scope statistics qualification
+
+#### Server 31ecdd61 statistics qualification
+
+`sqlite-stats-31ecdd61-v1` qualifies Server sources at
+`31ecdd61beadb7ac8de5da20998dead9a9e07845`, normalized contract digest
+`3165f114185aa403b563c936d5fbd0829388628f4a37540d9d1519202a07871c`, and wheel
+`powercontext-1.4.1.dev157+g0cc9036b0.d20261026-py3-none-any.whl`, SHA-256
+`7a17cf9c641d1fa7ae9635204b605aedca8e33f0ceddc0bf8fcd9dd02667cb4b`.
+All 552 packaged runtime files match that Server commit byte for byte. The sorted
+`path sha256` manifest, newline terminated, hashes to
+`9dbada6473027441b6b4934803d9efe718e84a48b4f77723d41b0de414eea125`.
+The wheel was built with local Desktop merge changes; its Server runtime,
+OpenAPI contract and dependency lock match the recorded sources.
+
+On 2026-10-26, macOS ARM64 with Python 3.12.13 and Rust 1.95.0 ran the native
+`ConnectionManager` / `server_probe` against independent SQLite processes from
+that wheel. Anonymous loopback, Bearer loopback, HTTPS with CA/base path and
+enforced-provider modes passed. The eleven operations include exact-Scope
+statistics: empty and persisted inventory, today/7d/30d UTC periods, zero usage,
+partial token reports and permission revocation. Partial reports are seeded via
+the real Runtime recorder, not observed model-provider calls. Identity changes,
+exact reads and ambiguous writes retain the existing harness checks.
+Evidence is generated under `.artifacts/stats-31ecdd61/` and `.artifacts/real-server.json`.
+This qualifies the recorded protocol and sources; installed UI and release
+acceptance require the checks for their corresponding Desktop head.
+
+#### Server 1da99747 statistics qualification (historical)
+
+`sqlite-stats-1da99747-v1` records Server commit
+`1da997476651c2850ff7141e2b7cd512d0152a90`, contract digest
+`5878999ce9e239d6642e4da858074b281ed465629432c578b3584eec47cbce6c`, and wheel
+`powercontext-1.4.1.dev139+g1da997476.d20261024-py3-none-any.whl` with SHA-256
+`4eda168954bb5950aa4f0bbc0d534b2b2bdb15ff43f97de7df279963c46c70a8`.
+All 457 Python runtime files in that wheel match the checkout's runtime sources;
+their sorted `path sha256` manifest, newline terminated, hashes to
+`49fe8325db1955ee250c3a76a8efad3d87fc393dc1007a95817524f38ded41ad`.
+The Desktop adapter and harness had local changes during this run; the Server
+runtime, OpenAPI contract and dependency lock matched the recorded commit.
+
+On macOS 26.7 ARM64, Python 3.12.13 and Rust 1.95.0, the native `ConnectionManager`
+and `ServerApi` passed the isolated built-wheel harness in anonymous loopback,
+Bearer loopback, HTTPS with explicit CA/base path, and enforced-provider modes.
+The eleven recorded operations include `get_stats`. Statistics checks exercise
+the exact Scope, genuine empty inventory, `today`/`7d`/`30d` UTC periods,
+persisted Memory inventory, no-model zero usage, and same-Principal permission
+revocation without selection fallback. Partial provider usage is explicitly
+seeded through the real Runtime recorder: two generation requests, unknown input
+tokens and nine output tokens survive persistence, aggregation and native parsing.
+This seeded input does not establish that an actual model provider emitted it.
+
+Synthetic native tests separately cover cancellation, changed Scope, independent
+Memory cancellation, response bounds, and invalid response selection/period.
+The harness reports are generated under `.artifacts/`; reproduce them with
+`fixture_qualification.py`, the `server_probe` example and `real_server.py`.
+These results qualify the observed Server protocol.
+
+The bundled macOS ARM64 debug app was also exercised against two isolated real
+Servers on this host, using an isolated application identifier and an 800 × 600
+window. The build used Desktop `34c61c5f` plus the main-window zoom permission
+in this PR; its executable SHA-256 is
+`43d0d149d3194739171ffb70a57736280c14d2cd3d63fe47001c8f2b3381065d`.
+Observed results include explicit activation after restart, empty inventory,
+Chinese and English partial-token displays, clearing on Scope/connection changes,
+and the second Server's independent one-entry inventory with zero usage.
+Command+0 followed by five Command+= steps exercised 200% webview zoom, including
+a successful statistics reload. The zoom IPC permission is restricted to the
+trusted local main window. This was a bundled debug-app check, not installer,
+IME, screen-reader, signing or complete accessibility acceptance.
+
+`installed_statistics.py` extends the Windows installed WebDriver journey with
+independent real `/v1/stats` table comparisons, all three UTC periods, bilingual
+unknown-token handling, and Scope/connection isolation. Its fixture and Python
+checks ran locally; the Windows UI journey requires actual Windows execution.
+Hosted workflows at `34c61c5f` required maintainer approval (`action_required`),
+so that head had no Windows acceptance result. Intel and release gates remain
+separate.
 
 ### Current Server protocol qualification
 

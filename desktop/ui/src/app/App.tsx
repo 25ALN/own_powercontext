@@ -27,6 +27,7 @@ import observationIcon from "../assets/retrieval.svg";
 
 import { TopBar } from "./TopBar";
 import { Overview } from "./Overview";
+import { Statistics } from "./Statistics";
 import { MemoryWorkspace } from "./MemoryWorkspace";
 import { LocalServerSettings } from "./LocalServerSettings";
 import { Help } from "./Help";
@@ -309,13 +310,22 @@ export function App() {
             </div>
           )}
           {page === "home" && (
-            <Overview
-              state={desktop}
-              language={language}
-              onNavigate={navigate}
-              refreshing={refreshing}
-              onRefresh={() => void refresh()}
-            />
+            <div className="stack">
+              <Overview
+                state={desktop}
+                language={language}
+                onNavigate={navigate}
+                refreshing={refreshing}
+                onRefresh={() => void refresh()}
+              />
+              <Statistics
+                key={`statistics-${desktop?.active?.generation ?? "none"}`}
+                state={desktop}
+                language={language}
+                onState={receiveState}
+                contextPending={contextPending}
+              />
+            </div>
           )}
           {page === "memories" && (
             <MemoryWorkspace

@@ -76,7 +76,7 @@ pnpm --dir desktop desktop:dev
 
 工程边界：
 
-- OpenAPI 自动派生的 TypeScript schema 和十项 operation 映射，包含契约摘要及漂移检查。
+- OpenAPI 自动派生的 TypeScript schema 和十一项 operation 映射，包含契约摘要及漂移检查。
 - `desktop/openapitools.json` 固定 OpenAPI Generator CLI 版本，Rust 模板位于 `desktop/scripts/openapi-generator/rust/`。修改 OpenAPI 合同或模板后，在仓库根目录执行 `pnpm --dir desktop generate`，不要手动编辑生成的 `src-tauri/src/transport/wire.rs`；CI 通过 `pnpm --dir desktop generate:check` 检查生成结果是否漂移。
 - Rust 自动派生的 IPC 类型与安全错误；凭据只写请求必须显式选择持久化或仅会话，成功回执只含存储模式，不含秘密或凭据标识。
 - Windows Credential Manager 原生适配器；保存失败直接报错，只有显式选择才采用仅会话内存。秘密类型不支持序列化，不实现 Debug。
@@ -116,6 +116,18 @@ Desktop 在每次诊断前检查固定路径和摘要，然后只允许 `service
 保存成功但没有返回记忆记录时，只报告操作成功，不编造引用。请求发出后的超时或中断可能意味着「结果未知」：先核对原连接和范围，再决定是否重新提交；相同正文不能证明属于这次操作。应用不会自动重试写入，也没有离线队列。切换连接或范围后隐藏旧结果，本次会话只保留最小操作状态和原目标。测试范围与剩余验收见 [验证说明](VALIDATION.md)。
 
 [验证说明](VALIDATION.md)列出可复现的检查方式和待完成的平台、产品验收项。
+
+## 当前范围的存量与用量
+
+统计需要显式选择 `sqlite-stats-31ecdd61-v1` 配置；独立验证的
+`sqlite-atomic-98275dbb-v1` 配置仅覆盖 Memory 操作。
+
+在“总览”中显式启用已验证兼容的连接、选择精确范围和“今天／最近 7 天／最近
+30 天”后，点击“加载统计”。页面展示 Server 时间、范围覆盖、存量快照、已记录
+的 UTC 模型用量和召回 token 估算。缺失 token 数保持“未知”；估算不代表账单
+节省或质量提升。每个图表均有等价表格，滚动区域可通过键盘聚焦。统计错误不禁用
+独立的 Memory 操作。详见[开发契约](../docs/zh/development/desktop-statistics.md)和
+[资格证据](VALIDATION.md#current-scope-statistics-qualification)。
 
 ## 远程安装包验收
 

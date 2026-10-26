@@ -38,6 +38,7 @@ const wanted = [
   "remember_memory",
   "search_memory",
   "get_artifact_revision",
+  "get_stats",
 ];
 const operations = {};
 for (const [path, item] of Object.entries(contract.paths)) {
