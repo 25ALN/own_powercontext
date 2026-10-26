@@ -248,6 +248,7 @@ from powercontext.builtin.runtime.recall_sufficiency import (
     build_recall_candidates,
     recall_effort,
 )
+from powercontext.builtin.runtime.source_lifecycle import SourceLifecycleApplication
 from powercontext.builtin.runtime.statistics import RelationalScopedStatistics, overview_selection
 from powercontext.builtin.scope import ScopeApplication, ScopeDescriptor, ScopeSelection
 from powercontext.builtin.scope.subject_sources import SubjectSourceService
@@ -1642,10 +1643,49 @@ def _topic_identity(hit: TopicMemorySearchHit) -> tuple[str, int]:
     return (hit.artifact_ref.artifact_id, hit.artifact_ref.revision)
 
 
+def _filter_topic_memory_hits(
+    result: TopicMemorySearchResult,
+    active_refs: set[tuple[str, str, int]],
+) -> TopicMemorySearchResult:
+    return result.model_copy(
+        update={
+            "hits": tuple(
+                hit
+                for hit in result.hits
+                if (hit.artifact_ref.family, hit.artifact_ref.artifact_id, hit.artifact_ref.revision) in active_refs
+            )
+        }
+    )
+
+
 def _admission_keyword(admission: AdmissionFloor | None) -> dict[str, Any]:
     """Forward ``admission`` only when set, keeping today's exact downstream calls otherwise."""
 
     return {} if admission is None else {"admission": admission}
+
+
+async def _active_memory_hits(
+    runtime: BuiltinRuntime, scope_id: str, hits: tuple[MemoryHit, ...]
+) -> tuple[MemoryHit, ...]:
+    if runtime.lifecycle is None:
+        return hits
+    lifecycle = runtime.lifecycle.for_scope(scope_id)
+    active = []
+    for hit in hits:
+        if await lifecycle.is_memory_active(hit.entry_id):
+            active.append(hit)
+    return tuple(active)
+
+
+async def _filter_lifecycle_topic_hits(
+    runtime: BuiltinRuntime, scope_id: str, result: TopicMemorySearchResult
+) -> TopicMemorySearchResult:
+    if runtime.lifecycle is None:
+        return result
+    lifecycle = runtime.lifecycle.for_scope(scope_id)
+    if not await lifecycle.has_topic_nodes():
+        return result
+    return _filter_topic_memory_hits(result, await lifecycle.active_topic_refs())
 
 
 class ContextApplication:
@@ -2453,10 +2493,11 @@ class ScopedMemoryApplication:
                             _MEMORY_SEARCH_MODE: result.mode,
                             _MEMORY_SEARCH_RESULT_COUNT: len(result.hits),
                         })
+                    hits = await _active_memory_hits(self._runtime, self.scope_id, result.hits)
                     return MemorySearchPage(
                         memory_ref=current.as_ref(),
                         mode=result.mode,
-                        hits=result.hits,
+                        hits=hits,
                         rerank=result.rerank,
                     )
 
@@ -2499,6 +2540,13 @@ class ScopedMemoryApplication:
             entries = tuple(
                 _entry_record(current, entry) for entry in await service.entries(current, tag_filter=tag_filter)
             )
+            if self._runtime.lifecycle is not None and not include_inactive:
+                active_entries = []
+                lifecycle = self._runtime.lifecycle.for_scope(self.scope_id)
+                for entry in entries:
+                    if await lifecycle.is_memory_active(entry.entry.entry_id):
+                        active_entries.append(entry)
+                entries = tuple(active_entries)
             if not include_inactive:
                 entries = tuple(entry for entry in entries if entry.state == "active")
             return MemoryEntriesPage(
@@ -2683,6 +2731,8 @@ class ScopedTopicMemoryApplication:
                         "unit": "topic-memory",
                     },
                 )
+        if self._runtime.lifecycle is not None:
+            result = await _filter_lifecycle_topic_hits(self._runtime, self.scope_id, result)
         return result
 
     async def _search_with_embedding(
@@ -3018,6 +3068,7 @@ class BuiltinRuntime:
         recall_effort_sink: RecallEffortSink | None = None,
         decision_model: DecisionModel | None = None,
         publication_application: ArtifactPublicationApplication | None = None,
+        lifecycle: SourceLifecycleApplication | None = None,
         scope_application: ScopeApplication | None = None,
         readiness: RuntimeReadinessChecks | None = None,
         clock: Clock | None = None,
@@ -3076,6 +3127,7 @@ class BuiltinRuntime:
         # (and tests) read it directly, and it is always fail-open wrapped before it gets here.
         self.decision_model = decision_model
         self.publications = publication_application
+        self.lifecycle = lifecycle
         self.scopes = scope_application
         self._readiness = RuntimeReadinessChecks() if readiness is None else readiness
         self._clock = _utc_now if clock is None else clock

@@ -645,6 +645,7 @@ async def open_builtin_runtime(
                 recall_effort_sink=recall_effort_sink,
                 decision_model=configured_decision,
                 publication_application=contexts.publications,
+                lifecycle=contexts.lifecycle,
                 scope_application=contexts.scopes,
                 readiness=RuntimeReadinessChecks(readiness_probes),
                 tracing=tracing,
