@@ -93,7 +93,11 @@ def test_sqlite_memory_backend_commits_authoritative_history_and_fts() -> None:
                     connection,
                     "project",
                     "decision",
-                    AtomicMemoryContent(kind="decision", text="Use one atomic composition boundary."),
+                    AtomicMemoryContent(
+                        kind="decision",
+                        text="Use one atomic composition boundary.",
+                        description="Fixture memory summary",
+                    ),
                     None,
                     lineage=ArtifactLineage(sources=(SourceRef(source_type="content", source_id=source.name),)),
                 )
@@ -106,13 +110,23 @@ def test_sqlite_memory_backend_commits_authoritative_history_and_fts() -> None:
                 first.ref.artifact_id,
                 '"revision:1"',
                 ArtifactWrite(
-                    content={"kind": "decision", "text": "Use one atomic composition boundary for providers."}
+                    content={
+                        "kind": "decision",
+                        "text": "Use one atomic composition boundary for providers.",
+                        "description": "Fixture memory summary",
+                    }
                 ),
             )
             constraint = await contexts.records.create_artifact(
                 "project",
                 "atomic-memory",
-                ArtifactWrite(content={"kind": "constraint", "text": "Do not split the provider transaction."}),
+                ArtifactWrite(
+                    content={
+                        "kind": "constraint",
+                        "text": "Do not split the provider transaction.",
+                        "description": "Fixture memory summary",
+                    }
+                ),
             )
             assert second.revision == 2
             history = await contexts.records.list_artifact_revisions(
@@ -148,7 +162,11 @@ def test_sqlite_memory_backend_rebuilds_head_and_fts_projections() -> None:
                 "project",
                 "atomic-memory",
                 ArtifactWrite(
-                    content={"kind": "decision", "text": "Rebuild search projections from authoritative revisions."}
+                    content={
+                        "kind": "decision",
+                        "text": "Rebuild search projections from authoritative revisions.",
+                        "description": "Fixture memory summary",
+                    }
                 ),
             )
             memory = contexts.atomic_memory.for_scope("project")

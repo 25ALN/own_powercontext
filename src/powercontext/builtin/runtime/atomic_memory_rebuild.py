@@ -159,6 +159,7 @@ async def _projection_differences(
         "projection_format": ATOMIC_MEMORY_PROJECTION_FORMAT,
         "kind": content.kind,
         "text": content.text,
+        "description": content.description,
         "searchable_text": analyze_text(atomic_memory_embedding_input(content.kind, content.text)),
         "profile_fingerprint": fingerprint,
         "embedding_input_hash": None
