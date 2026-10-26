@@ -345,6 +345,8 @@ class _AtomicMemoryMergeService(ArtifactMergeService):
         *,
         read_set: Sequence[ArtifactMergeRead] = (),
         direct_source: SourceRef | None = None,
+        direct_sources: Sequence[SourceRef | None] | None = None,
+        source_read_set: _SourceReadSet | None = None,
     ) -> tuple[ArtifactMergeMutationResult, ...]:
         for item in prepared:
             if item.plan.operation in {"change", "merge"}:
@@ -358,6 +360,8 @@ class _AtomicMemoryMergeService(ArtifactMergeService):
             context,
             read_set=read_set,
             direct_source=direct_source,
+            direct_sources=direct_sources,
+            source_read_set=source_read_set,
         )
 
 
