@@ -667,6 +667,7 @@ class RelationalAtomicMemoryIndex:
             "projection_format": ATOMIC_MEMORY_PROJECTION_FORMAT,
             "kind": prepared.kind,
             "text": prepared.text,
+            "description": prepared.description,
             "searchable_text": prepared.searchable_text,
             "tag_keys": json.dumps(sorted(set(projection.tag_keys)), ensure_ascii=False),
             "embedding": embedding,
