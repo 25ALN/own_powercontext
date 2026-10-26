@@ -71,7 +71,9 @@ def test_unpublished_reconciliation_receives_bounded_identity_correction(correct
                 compared_ids=("candidate:0",),
                 target_ids=("candidate:0",),
                 content=AtomicMemoryReconciliationContent(
-                    kind="fact", text="The project selected OceanBase for persistence."
+                    kind="fact",
+                    text="The project selected OceanBase for persistence.",
+                    description="OceanBase selected for persistence",
                 ),
                 evidence_ids=("source:1",),
                 reason="Combine the two supported statements.",
