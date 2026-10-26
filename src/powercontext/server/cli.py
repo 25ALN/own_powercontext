@@ -56,7 +56,7 @@ from powercontext.server.configuration import (
 from powercontext.server.database_migration import app as database_migration_app
 from powercontext.server.factory import _ServerReadinessProbe, create_background_metrics_app, create_server_app
 from powercontext.server.identity import open_server_identity_repository
-from powercontext.server.logging import WorkerLogging, configure_server_logging
+from powercontext.server.logging import configure_server_logging, shutdown_server_logging, worker_logging
 from powercontext.server.metrics import ServerMetrics
 from powercontext.server.processing_security import build_worker_security
 from powercontext.server.settings import (
@@ -482,23 +482,22 @@ def _run_configured_server(settings: ServerSettings) -> None:
     """Run one already-validated configuration in the current process."""
 
     configure_server_logging(settings.logging, role=settings.runtime.artifact_processing_role)
-    tracing = configure_server_tracing(settings.tracing, role=settings.runtime.artifact_processing_role)
     try:
-        write_inference_capability_notice(
-            generation_model=settings.inference.generation_model,
-            embedding_model=settings.inference.embedding_model,
-        )
-        if settings.runtime.artifact_processing_role == "background":
-            _run_background(settings, tracing)
-            return
-        application = create_server_app(settings=settings, tracing=tracing)
-        _run_server(
-            application,
-            host=settings.http.host,
-            port=settings.http.port,
-        )
+        tracing = configure_server_tracing(settings.tracing, role=settings.runtime.artifact_processing_role)
+        try:
+            write_inference_capability_notice(
+                generation_model=settings.inference.generation_model,
+                embedding_model=settings.inference.embedding_model,
+            )
+            if settings.runtime.artifact_processing_role == "background":
+                _run_background(settings, tracing)
+                return
+            application = create_server_app(settings=settings, tracing=tracing)
+            _run_server(application, host=settings.http.host, port=settings.http.port)
+        finally:
+            tracing.shutdown()
     finally:
-        tracing.shutdown()
+        shutdown_server_logging()
 
 
 def _friendly_bad_parameter(error: ValidationError) -> typer.BadParameter:
@@ -553,6 +552,7 @@ async def _run_background_async(settings: ServerSettings, tracing: Any) -> None:
         installed.append(signum)
     try:
         async with AsyncExitStack() as resources:
+            logging_bootstrap = resources.enter_context(worker_logging(settings.logging, role="background"))
             principal = (
                 PrincipalRef(type="service", id="server-token", description="PowerContext static bearer")
                 if settings.auth.token is not None
@@ -577,7 +577,7 @@ async def _run_background_async(settings: ServerSettings, tracing: Any) -> None:
                     model_usage_observer=None if metrics is None else metrics.observe_model_usage,
                     worker_model_usage_observer=None if metrics is None else metrics.observe_worker_model_usage,
                     processing_observer=None if metrics is None else metrics.observe_processing,
-                    worker_initializer=WorkerLogging(settings.logging),
+                    worker_initializer=logging_bootstrap,
                     worker_entrypoint_wrapper=WorkerTracing(settings.tracing).wrap,
                 )
             )

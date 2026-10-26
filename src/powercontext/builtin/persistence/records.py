@@ -205,10 +205,15 @@ class RelationalRecordService:
         /,
     ) -> SourceRecord:
         self._require_content_source(source_type)
+        content_text = _canonical_source_text(content)
+        if not content_text.strip():
+            # Blank text cannot be read back through the content Source adapter and
+            # would wedge every later generation window that admits it.
+            raise InvalidBaseAccessRequestError("content", "content text must not be blank")
         source = ContentSource(
             name=self._id_factory("source"),
             materialization=SourceMaterialization.CAPTURED,
-            content=_canonical_source_text(content),
+            content=content_text,
             wire_content=_JSON_VALUE.validate_python(content, strict=True),
             wire_content_present=True,
         )

@@ -83,7 +83,7 @@ from powercontext.server.dream_access import DreamAccess
 from powercontext.server.http_limits import HttpResourceLimitsMiddleware
 from powercontext.server.identity import ServerIdentityRepository
 from powercontext.server.info import server_info
-from powercontext.server.logging import WorkerLogging
+from powercontext.server.logging import worker_logging
 from powercontext.server.mcp import mount_mcp
 from powercontext.server.metrics import CONTENT_TYPE_LATEST, HttpMetricsMiddleware, ServerMetrics
 from powercontext.server.middleware import AuthenticationMiddleware
@@ -188,6 +188,9 @@ def create_server_app(  # noqa: C901
         )
         cursor_secret = resolve_cursor_secret(config.database, configured_cursor_secret)
         async with AsyncExitStack() as resources:
+            logging_bootstrap = resources.enter_context(
+                worker_logging(resolved.logging, role=resolved.runtime.artifact_processing_role)
+            )
             active_access_control = configured_access_control
             if active_access_control is None and resolved.access.mode == "enforced":
                 active_access_control = await resources.enter_async_context(
@@ -243,7 +246,7 @@ def create_server_app(  # noqa: C901
                     scheduled_source_runner=scheduled_source_runner,
                     scheduled_experience_runner=scheduled_experience_runner,
                     worker_security=worker_security,
-                    worker_initializer=WorkerLogging(resolved.logging),
+                    worker_initializer=logging_bootstrap,
                     worker_entrypoint_wrapper=WorkerTracing(resolved.tracing).wrap,
                     scheduled_profile_runner=_scheduled_profile_runner(
                         resolved,

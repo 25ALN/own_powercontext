@@ -17,9 +17,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from powercontext.builtin.persistence.supervision import ArtifactProcessingFence
 
@@ -130,6 +131,16 @@ class ArtifactProcessingWorkerLauncher(Protocol):
 WorkerEntrypoint = Callable[[ArtifactProcessingWorkAssignment], ArtifactProcessingWorkerCompletion | None]
 
 
+@runtime_checkable
+class WorkerInitializerPreparation(Protocol):
+    """Own per-launch resources through spawn or cancellation cleanup.
+
+    The context yields a picklable callable that runs inside the new child.
+    """
+
+    def prepare(self) -> AbstractContextManager[Callable[[], None]]: ...
+
+
 def processing_error_code(exception_type: type[BaseException] | str, error_code: str = "") -> str:
     """Expose only known categories, never exception messages or custom codes."""
 
@@ -167,5 +178,6 @@ __all__ = [
     "ArtifactProcessingWorkerLauncher",
     "ArtifactProcessingWorkerOutcome",
     "WorkerEntrypoint",
+    "WorkerInitializerPreparation",
     "processing_error_code",
 ]

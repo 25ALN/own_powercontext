@@ -183,7 +183,11 @@ from powercontext.builtin.runtime.extraction_diagnostics import ExtractionDiagno
 from powercontext.builtin.runtime.family_processing import FAMILY_BINDINGS, FamilyWorkerSpec, run_family_worker
 from powercontext.builtin.runtime.memory_write_gate import build_memory_write_gate
 from powercontext.builtin.runtime.models import DreamOperationCapability, MemorySearchMode, RuntimeCapabilities
-from powercontext.builtin.runtime.processing_contracts import ArtifactProcessingModelUsageDelta, WorkerEntrypoint
+from powercontext.builtin.runtime.processing_contracts import (
+    ArtifactProcessingModelUsageDelta,
+    WorkerEntrypoint,
+    WorkerInitializerPreparation,
+)
 from powercontext.builtin.runtime.processing_discovery import SourceProcessingPendingProvider, enabled_profile_scopes
 from powercontext.builtin.runtime.processing_registry import (
     canonical_processing_manifest,
@@ -519,7 +523,7 @@ async def open_builtin_runtime(
     artifact_processing_bindings: Sequence[ArtifactProcessingBinding] = (),
     worker_security: dict[str, Any] | None = None,
     processing_observer: Callable[[str, str, float], None] | None = None,
-    worker_initializer: Callable[[], None] | None = None,
+    worker_initializer: Callable[[], None] | WorkerInitializerPreparation | None = None,
     worker_entrypoint_wrapper: Callable[[WorkerEntrypoint], WorkerEntrypoint] | None = None,
     scheduled_source_runner: ScheduledSourceRunner | None = None,
     scheduled_experience_runner: ScheduledExperienceRunner | None = None,
@@ -536,9 +540,11 @@ async def open_builtin_runtime(
     An explicit ``recall_effort_sink`` replaces that recorder rather than adding
     a second observation. A disabled gate invokes neither recorder nor sink.
 
-    ``worker_initializer`` is an optional picklable bootstrap for automatically
-    composed spawn workers. Custom bindings own their launchers and initialization.
-    The default does not configure process logging.
+    ``worker_initializer`` is an optional bootstrap for automatically composed spawn
+    workers. A ``WorkerInitializerPreparation`` can own per-launch resources through
+    a context manager yielding the picklable child bootstrap. Its resources remain
+    open until spawn or cancellation cleanup finishes. Custom bindings own their
+    launchers and initialization. The default does not configure process logging.
     """
 
     async with AsyncExitStack() as resources:
@@ -935,7 +941,7 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
     injected_pipelines: Mapping[str, object | None] | None = None,
     injected_memory_write_gate: MemoryWriteGate | None = None,
     worker_security: dict[str, Any] | None = None,
-    worker_initializer: Callable[[], None] | None = None,
+    worker_initializer: Callable[[], None] | WorkerInitializerPreparation | None = None,
     worker_entrypoint_wrapper: Callable[[WorkerEntrypoint], WorkerEntrypoint] | None = None,
     worker_model_usage_observer: Callable[[ArtifactProcessingModelUsageDelta | None], None] | None = None,
     source_registry: SourceDefinitionRegistry = BUILTIN_SOURCE_REGISTRY,

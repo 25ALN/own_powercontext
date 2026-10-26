@@ -25,7 +25,7 @@ import time
 import traceback as traceback_module
 from collections import deque
 from collections.abc import Awaitable, Callable, Iterator, Sequence
-from contextlib import contextmanager, nullcontext, suppress
+from contextlib import ExitStack, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -70,6 +70,7 @@ from powercontext.builtin.runtime.processing_contracts import (
     ArtifactProcessingWorkerLauncher,
     ArtifactProcessingWorkerOutcome,
     WorkerEntrypoint,
+    WorkerInitializerPreparation,
     processing_error_code,
 )
 from powercontext.builtin.runtime.protocols import RuntimeSpan, RuntimeTracing
@@ -218,7 +219,7 @@ class SpawnArtifactProcessingWorkerLauncher:
         self,
         entrypoint: WorkerEntrypoint,
         *,
-        initializer: Callable[[], None] | None = None,
+        initializer: Callable[[], None] | WorkerInitializerPreparation | None = None,
         entrypoint_wrapper: Callable[[WorkerEntrypoint], WorkerEntrypoint] | None = None,
         collect_model_usage: bool = False,
     ) -> None:
@@ -228,41 +229,45 @@ class SpawnArtifactProcessingWorkerLauncher:
         self._collect_model_usage = collect_model_usage
 
     async def start(self, assignment: ArtifactProcessingWorkAssignment) -> ArtifactProcessingWorkerHandle:
-        context = multiprocessing.get_context("spawn")
-        receiver, sender = context.Pipe(duplex=False)
-        entrypoint = self._entrypoint
-        if self._entrypoint_wrapper is not None:
-            with suppress(Exception):
-                entrypoint = self._entrypoint_wrapper(entrypoint)
-        process = _OwnedSpawnProcess(
-            target=_run_spawned_worker,
-            args=(sender, entrypoint, assignment, self._initializer, self._collect_model_usage),
-            name=f"powercontext-artifact-worker-{assignment.worker_id}",
-            daemon=False,
-        )
-        owner = _SpawnStartOwner()
-        start_task = asyncio.create_task(
-            asyncio.to_thread(_start_owned_spawn_process, process, owner),
-            name=f"powercontext-artifact-worker-start-{assignment.worker_id}",
-        )
-        try:
-            await asyncio.shield(start_task)
-        except asyncio.CancelledError:
-            cleanup_task = asyncio.create_task(
-                _cleanup_cancelled_spawn_start(start_task, process, owner, receiver, sender),
-                name=f"powercontext-artifact-worker-cleanup-{assignment.worker_id}",
+        with ExitStack() as launch_resources:
+            initializer = self._initializer
+            if isinstance(initializer, WorkerInitializerPreparation):
+                initializer = launch_resources.enter_context(initializer.prepare())
+            context = multiprocessing.get_context("spawn")
+            receiver, sender = context.Pipe(duplex=False)
+            entrypoint = self._entrypoint
+            if self._entrypoint_wrapper is not None:
+                with suppress(Exception):
+                    entrypoint = self._entrypoint_wrapper(entrypoint)
+            process = _OwnedSpawnProcess(
+                target=_run_spawned_worker,
+                args=(sender, entrypoint, assignment, initializer, self._collect_model_usage),
+                name=f"powercontext-artifact-worker-{assignment.worker_id}",
+                daemon=False,
             )
-            await _complete_cleanup(cleanup_task)
-            raise
-        except BaseException:
-            cleanup_task = asyncio.create_task(
-                _cleanup_failed_spawn_start(owner, receiver, sender),
-                name=f"powercontext-artifact-worker-cleanup-{assignment.worker_id}",
+            owner = _SpawnStartOwner()
+            start_task = asyncio.create_task(
+                asyncio.to_thread(_start_owned_spawn_process, process, owner),
+                name=f"powercontext-artifact-worker-start-{assignment.worker_id}",
             )
-            await _complete_cleanup(cleanup_task)
-            raise
-        sender.close()
-        return _SpawnedWorkerHandle(process, receiver)
+            try:
+                await asyncio.shield(start_task)
+            except asyncio.CancelledError:
+                cleanup_task = asyncio.create_task(
+                    _cleanup_cancelled_spawn_start(start_task, process, owner, receiver, sender),
+                    name=f"powercontext-artifact-worker-cleanup-{assignment.worker_id}",
+                )
+                await _complete_cleanup(cleanup_task)
+                raise
+            except BaseException:
+                cleanup_task = asyncio.create_task(
+                    _cleanup_failed_spawn_start(owner, receiver, sender),
+                    name=f"powercontext-artifact-worker-cleanup-{assignment.worker_id}",
+                )
+                await _complete_cleanup(cleanup_task)
+                raise
+            sender.close()
+            return _SpawnedWorkerHandle(process, receiver)
 
 
 async def _cleanup_cancelled_spawn_start(

@@ -15,6 +15,34 @@ The foreground Server writes operational logs to its process output. Configure
 and `POWERCONTEXT_SERVER_LOGGING_ACCESS` (default `true`). For a native personal service, run
 `powercontext service status` to find the journal selector or log paths. Docker users can inspect container logs.
 
+### File output, rotation, and compression
+
+Enable file output with `POWERCONTEXT_SERVER_LOGGING_FILE=true`. The Server creates the directory and writes operational logs to files instead of stdout. Python's `RotatingFileHandler` defaults to rotation near 20 MiB and retains up to ten gzip archives per active file. Adjust the threshold, retention, and compression to fit the available storage and CPU budget. Restarting appends to the active file; no external rotation tool is required.
+
+| Environment variable | Default | Meaning |
+| --- | --- | --- |
+| `POWERCONTEXT_SERVER_LOGGING_FILE` | `false` | Write managed files instead of stdout |
+| `POWERCONTEXT_SERVER_LOGGING_DIRECTORY` | User data directory + `logs/` | Directory for log files; respects `POWERCONTEXT_HOME` |
+| `POWERCONTEXT_SERVER_LOGGING_MAX_BYTES` | `20971520` | Positive size threshold for rotation |
+| `POWERCONTEXT_SERVER_LOGGING_BACKUP_COUNT` | `10` | Maximum archives per active file; must be at least one |
+| `POWERCONTEXT_SERVER_LOGGING_COMPRESSION` | `gzip` | Archive compression: `gzip` or `none` |
+
+```bash
+export POWERCONTEXT_SERVER_LOGGING_FILE=true
+export POWERCONTEXT_SERVER_LOGGING_DIRECTORY=/var/lib/powercontext/logs
+powercontext server run
+```
+
+Files are named by the existing Server process role: `all.log`, `api.log`, or `background.log`; explicit configuration without a role uses `server.log`. Workers share their owning Server's file, with execution identity recorded in each entry. Archives are named `all.log.1.gz`, `all.log.2.gz`, and so on, with `.1` being the newest archive. Without compression they use `.1`, `.2`, and so on. Changing compression does not remove archives from the previous policy. The active file remains uncompressed. The size threshold is approximate; one large record can exceed it. Retention applies per active file, not to unrelated files in the directory. `POWERCONTEXT_SERVER_LOGGING_FORMAT` selects readable text or JSON for either stdout or file output.
+
+Workers send already formatted, allowlisted records over dedicated socketpairs to their owning Server. Each channel is created before spawn, and only its sending end is passed to that Worker. The receiver does not listen on a network port or deserialize Python objects. JSON-line envelopes preserve multiline output. Worker identity and request/trace correlation are captured before sending. One receiver thread multiplexes the streams and one writer thread consumes a bounded in-process queue; logging starts no additional processes. Stream-only output keeps the standard stream handlers.
+
+Each file has an exclusive writer lock; a second Server with the same directory and role is rejected. Use separate directories for independent replicas. Stop workers before closing the logging owner. Shutdown drains Worker streams for at most one second, then waits for queued output through `QueueListener.stop()` before closing the handlers. File writes, compression, and close use native logging cleanup without a separate timeout. A stalled file sink can therefore delay Server process exit. Incomplete records are discarded without printing their contents. A failed Worker stream does not stop other streams. Send waits are bounded; a failed send retires that Worker's stream. The receiver handles up to 256 concurrent streams, and JSON-line envelopes are limited to 256 KiB after UTF-8 encoding. Oversized records, full queues, transport failures, and forced process exits can lose logs. Logs remain best-effort.
+
+macOS and Windows personal services enable managed file output by default. An explicit `POWERCONTEXT_SERVER_LOGGING_FILE=false` keeps stream output. Linux personal services keep journal output by default. Host-owned stdout/stderr files still capture startup diagnostics and direct stream writes; those files are outside the managed handler's rotation policy. `powercontext service status` reports the host's diagnostic directory or journal selector; a custom managed directory is selected through `POWERCONTEXT_SERVER_LOGGING_DIRECTORY`.
+
+An unavailable directory or an existing writer prevents file logging configuration. Once running, formatting, transport, queue, write, and compression failures use the same content-free `observability.log_failed` notification as stream failures. Completed gzip archives are published before the original file is removed. SDK Runtime use does not configure logging; embedding applications retain ownership. An embedded Server with file output can own a worker-only sink without reconfiguring the embedding application's loggers.
+
 Use the response's `X-PowerContext-Request-ID` to correlate a failed request with diagnostics. The host guides also
 explain content-free recall and capture diagnostics; a missing context result can be valid rather than an outage.
 
@@ -133,7 +161,7 @@ Runtime/Supervisor instance and reset when that owner is recreated; scrapes do n
 | `dependency_probe_duration_seconds` | `dependency`, `outcome`: actual probes, excluding cache hits |
 | `telemetry_collection_timestamp_seconds` | Last successful passive snapshot collection; `0` before collection |
 | `telemetry_collection_failures_total` | Failed passive collection attempts; the previous observation is retained |
-| `telemetry_log_records_dropped_total` | Records that the process-owned log handler failed to deliver |
+| `telemetry_log_records_dropped_total` | Observed records that the process-owned handler or Worker receiver failed to deliver; clean EOF/reset is not a loss, and unobserved losses are not counted |
 
 Detailed probe observations cover `database`, `inference.generation`, `inference.rerank`, `inference.decision`, and
 `inference.embedding`. The same `dependency_state` family also includes bounded aggregate checks for `runtime`,

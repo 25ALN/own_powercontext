@@ -37,7 +37,7 @@ from powercontext.builtin.runtime.config import (
     InferenceConfig,
     RuntimeConfig,
 )
-from powercontext.paths import default_database_path, default_seekdb_path, sqlite_url
+from powercontext.paths import default_database_path, default_seekdb_path, powercontext_data_dir, sqlite_url
 from powercontext.transport import is_loopback_host
 
 _UNSAFE_BIND_MESSAGE = (
@@ -167,6 +167,16 @@ class ServerLoggingConfig(BaseModel):
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     format: Literal["console", "json"] = "console"
     access: bool = True
+    file: bool = False
+    directory: Path = Field(default_factory=lambda: powercontext_data_dir() / "logs")
+    max_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
+    backup_count: int = Field(default=10, ge=1)
+    compression: Literal["none", "gzip"] = "gzip"
+
+    @field_validator("directory")
+    @classmethod
+    def resolve_directory(cls, value: Path) -> Path:
+        return value.expanduser().resolve()
 
     @field_validator("level", mode="before")
     @classmethod
