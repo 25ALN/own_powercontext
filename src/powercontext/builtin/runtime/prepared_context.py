@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -46,6 +48,8 @@ _MIN_TRUNCATED_CONTENT_BYTES = 64
 _ELLIPSIS = "…"
 _BEGIN_MARKER = "BEGIN_POWERCONTEXT_PREPARED_CONTEXT_V1"
 _END_MARKER = "END_POWERCONTEXT_PREPARED_CONTEXT_V1"
+_EVIDENCE_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
+_EVIDENCE_TOKEN = re.compile(r"[a-z]+|\d+", re.IGNORECASE)
 _Item = TypeVar("_Item")
 
 
@@ -106,6 +110,7 @@ class PreparedContextBuild:
     origins: tuple[PreparedContextOrigin, ...]
     omissions: PreparedContextOmissions = PreparedContextOmissions()
     code_origins: tuple[CodeEvidenceRef, ...] = ()
+    fragments: tuple[EvidenceFragment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -115,6 +120,16 @@ class MemoryEntryAddress:
     memory: ArtifactAddress
     entry_id: str
     entry_version_id: str
+
+
+@dataclass(frozen=True)
+class EvidenceFragment:
+    """A literal character range selected from one exact Memory entry version."""
+
+    address: MemoryEntryAddress
+    start: int
+    end: int
+    text: str
 
 
 PreparedContextOrigin = MemoryCitation | ArtifactRef | MemoryEntryAddress | ArtifactAddress
@@ -211,6 +226,8 @@ class PreparedContextBuilder:
         profile_candidates: Sequence[PreparedProfileCandidate] = (),
         code_candidates: Sequence[PreparedCodeCandidate] = (),
     ) -> PreparedContextBuild:
+        if request.evidence_selection:
+            return self._select_evidence(request, memory_candidates)
         if request.include_code:
 
             def historical(history_request: PrepareContextRequest, entries: int) -> PreparedContextBuild:
@@ -254,6 +271,63 @@ class PreparedContextBuilder:
             context=PreparedContext(status="ready", content=content, content_bytes=content_bytes),
             origins=origins,
             omissions=omissions,
+        )
+
+    def _select_evidence(
+        self, request: PrepareContextRequest, memory_candidates: Sequence[PreparedMemoryCandidates]
+    ) -> PreparedContextBuild:
+        candidates: list[tuple[float, int, _PreparedContextEntry, EvidenceFragment]] = []
+        query_terms = Counter(_evidence_terms(request.query))
+        for group_index, group in enumerate(memory_candidates):
+            for hit_index, hit in enumerate(group.hits):
+                if group.memory_ref is None or hit.memory_ref != group.memory_ref:
+                    raise PreparedContextInvariantError("memory-ref-mismatch")
+                address = MemoryEntryAddress(
+                    memory=ArtifactAddress(scope_id=group.scope_id, artifact=hit.memory_ref),
+                    entry_id=hit.entry_id,
+                    entry_version_id=hit.entry_version_id,
+                )
+                citation = {
+                    "scope_id": group.scope_id,
+                    "memory_ref": hit.memory_ref.model_dump(mode="json"),
+                    "entry_id": hit.entry_id,
+                    "entry_version_id": hit.entry_version_id,
+                }
+                for start, end in _sentence_ranges(hit.text):
+                    text = hit.text[start:end]
+                    terms = Counter(_evidence_terms(text))
+                    overlap = sum(min(count, terms[term]) for term, count in query_terms.items())
+                    if overlap == 0:
+                        continue
+                    # Favor literal windows that cover more distinct query terms, while keeping
+                    # longer sentences useful when they contain several matching terms.
+                    score = overlap + 0.25 * sum(term in terms for term in query_terms)
+                    fragment = EvidenceFragment(address=address, start=start, end=end, text=text)
+                    entry = _PreparedContextEntry(
+                        origin=address, kind="memory", citation=citation, content=text, truncated=False
+                    )
+                    candidates.append((score, group_index * 1000 + hit_index, entry, fragment))
+        candidates.sort(
+            key=lambda item: (-item[0] / max(1, len(item[2].content.encode("utf-8"))), -item[0], item[1], item[3].start)
+        )
+        selected: list[tuple[_PreparedContextEntry, EvidenceFragment]] = []
+        for _, _, entry, fragment in candidates:
+            if any(
+                item.address == fragment.address and not (fragment.end <= item.start or fragment.start >= item.end)
+                for _, item in selected
+            ):
+                continue
+            tentative = (*selected, (entry, fragment))
+            if len(_render_evidence(tentative).encode("utf-8")) <= request.max_bytes:
+                selected.append((entry, fragment))
+        if not selected:
+            return PreparedContextBuild(context=self.empty(), origins=(), fragments=())
+        content = _render_evidence(selected)
+        fragments = tuple(fragment for _, fragment in selected)
+        return PreparedContextBuild(
+            context=PreparedContext(status="ready", content=content, content_bytes=len(content.encode("utf-8"))),
+            origins=tuple(fragment.address for fragment in fragments),
+            fragments=fragments,
         )
 
     def probe_budget(
@@ -722,6 +796,49 @@ def _render_entry(entry: _PreparedContextEntry) -> dict[str, object]:
 
 def _rendered_bytes(entries: Sequence[_PreparedContextEntry]) -> int:
     return len(_render(entries).encode("utf-8"))
+
+
+def _evidence_terms(text: str) -> tuple[str, ...]:
+    return tuple(_EVIDENCE_TOKEN.findall(text.lower()))
+
+
+def _sentence_ranges(text: str) -> tuple[tuple[int, int], ...]:
+    ranges: list[tuple[int, int]] = []
+    start = 0
+    for boundary in _EVIDENCE_SENTENCE_BOUNDARY.finditer(text):
+        end = boundary.start()
+        while start < end and text[start].isspace():
+            start += 1
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if start < end:
+            ranges.append((start, end))
+        start = boundary.end()
+    end = len(text)
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    if start < end:
+        ranges.append((start, end))
+    return tuple(ranges)
+
+
+def _render_evidence(items: Sequence[tuple[_PreparedContextEntry, EvidenceFragment]]) -> str:
+    envelope = {
+        "trust": "untrusted_history",
+        "items": [
+            {
+                "citation": entry.citation,
+                "content": fragment.text,
+                "start": fragment.start,
+                "end": fragment.end,
+            }
+            for entry, fragment in items
+        ],
+    }
+    encoded = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    return "\n\n".join((TRUST_POLICY, f"{_BEGIN_MARKER}\n{encoded}\n{_END_MARKER}"))
 
 
 def _truncate_utf8(text: str, byte_budget: int) -> str:
