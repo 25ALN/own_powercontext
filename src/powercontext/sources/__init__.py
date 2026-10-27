@@ -25,14 +25,14 @@ from powercontext.sources.connectors import (
     ConnectorSubmissionStatus,
 )
 from powercontext.sources.csv_rows import (
+    CSV_ROW_SOURCE_ADAPTER,
+    CSV_ROW_SOURCE_DEFINITION,
+    CSV_ROW_SOURCE_NAME,
     CSVDocumentInput,
     CSVRowInput,
     CSVRowSource,
     CSVRowSourceAdapter,
     CSVRowTextEvidenceProjection,
-    CSV_ROW_SOURCE_ADAPTER,
-    CSV_ROW_SOURCE_DEFINITION,
-    CSV_ROW_SOURCE_NAME,
     csv_row_source_id,
     parse_csv_document,
 )
@@ -51,6 +51,19 @@ from powercontext.sources.observations import (
     manifest_for_definition,
     project_source_for_transport,
 )
+from powercontext.sources.pdf_pages import (
+    PDF_PAGE_SOURCE_ADAPTER,
+    PDF_PAGE_SOURCE_DEFINITION,
+    PDF_PAGE_SOURCE_NAME,
+    PDFDocumentInput,
+    PDFPageInput,
+    PDFPageSource,
+    PDFPageSourceAdapter,
+    PDFPageTextEvidenceProjection,
+    parse_pdf_document,
+    pdf_page_source_id,
+    search_pdf_pages,
+)
 from powercontext.sources.pi_session import (
     PI_EVENT_SOURCE_DEFINITION,
     PiEventInput,
@@ -62,6 +75,12 @@ from powercontext.sources.projections import TEXT_EVIDENCE_PROJECTION_KEY, TextE
 from powercontext.sources.protocols import SourceCatalogBackend, SourceStore
 
 __all__ = [
+    "CSV_ROW_SOURCE_ADAPTER",
+    "CSV_ROW_SOURCE_DEFINITION",
+    "CSV_ROW_SOURCE_NAME",
+    "PDF_PAGE_SOURCE_ADAPTER",
+    "PDF_PAGE_SOURCE_DEFINITION",
+    "PDF_PAGE_SOURCE_NAME",
     "PI_EVENT_SOURCE_DEFINITION",
     "TEXT_EVIDENCE_PROJECTION_KEY",
     "AdapterSourceDefinition",
@@ -70,9 +89,6 @@ __all__ = [
     "CSVRowSource",
     "CSVRowSourceAdapter",
     "CSVRowTextEvidenceProjection",
-    "CSV_ROW_SOURCE_ADAPTER",
-    "CSV_ROW_SOURCE_DEFINITION",
-    "CSV_ROW_SOURCE_NAME",
     "Connector",
     "ConnectorBinding",
     "ConnectorItemOutcome",
@@ -81,6 +97,11 @@ __all__ = [
     "ConnectorRunSession",
     "ConnectorRunStatus",
     "ConnectorSubmissionStatus",
+    "PDFDocumentInput",
+    "PDFPageInput",
+    "PDFPageSource",
+    "PDFPageSourceAdapter",
+    "PDFPageTextEvidenceProjection",
     "PiEventInput",
     "PiSessionConnector",
     "PiSessionInput",
@@ -103,6 +124,9 @@ __all__ = [
     "csv_row_source_id",
     "manifest_for_definition",
     "parse_csv_document",
+    "parse_pdf_document",
     "parse_pi_session",
+    "pdf_page_source_id",
     "project_source_for_transport",
+    "search_pdf_pages",
 ]
