@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Any, Protocol
 
 from sqlalchemy import Table
@@ -189,8 +189,14 @@ class NoMemoryIndex:
 class CompositeMemoryIndex:
     """Combine independent search indexes without leaking them into repositories."""
 
-    def __init__(self, *indexes: MemoryIndex) -> None:
+    def __init__(
+        self,
+        *indexes: MemoryIndex,
+        hybrid_search: Callable[[AsyncConnection, str, MemorySearchRequest], Awaitable[MemorySearchChannels]]
+        | None = None,
+    ) -> None:
         self.indexes = indexes
+        self._hybrid_search = hybrid_search
         fts = any(index.capabilities.fts for index in indexes)
         vector_indexes = tuple(index for index in indexes if index.capabilities.vector)
         profile = vector_indexes[0].capabilities.embedding_profile if vector_indexes else None
@@ -247,6 +253,8 @@ class CompositeMemoryIndex:
         request: MemorySearchRequest,
         /,
     ) -> MemorySearchChannels:
+        if request.mode == "hybrid" and self._hybrid_search is not None:
+            return await self._hybrid_search(connection, scope_id, request)
         fts: tuple[MemoryChannelHit, ...] = ()
         vector: tuple[MemoryChannelHit, ...] = ()
         for index in self.indexes:
