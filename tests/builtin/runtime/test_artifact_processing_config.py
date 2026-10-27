@@ -40,6 +40,8 @@ def test_artifact_processing_configuration_defaults_match_the_rfc() -> None:
 
     assert runtime.topic_memory_schedule_seconds is None
     assert runtime.topic_memory_source_window_limit == 10
+    assert runtime.memory_source_count_threshold is None
+    assert runtime.topic_memory_source_count_threshold is None
     assert runtime.topic_memory_history_max_candidates == 20
     assert runtime.topic_memory_history_rrf_threshold == 70
     assert runtime.topic_memory_history_min_candidates == 5
@@ -61,6 +63,11 @@ def test_artifact_processing_configuration_rejects_invalid_bounds() -> None:
         RuntimeConfig(artifact_processing_worker_timeout_seconds=0)
     with pytest.raises(ValidationError):
         RuntimeConfig(topic_memory_history_max_candidates=21)
+    for field in ("memory_source_count_threshold", "topic_memory_source_count_threshold"):
+        for value in (True, "2", 2.0, 0, -1):
+            with pytest.raises(ValidationError):
+                RuntimeConfig.model_validate({field: value})
+        assert getattr(RuntimeConfig.model_validate({field: 2}), field) == 2
     with pytest.raises(ValidationError, match="max_tokens"):
         InferenceConfig(generation_model="test", generation_model_settings={"max_tokens": True})
     with pytest.raises(ValidationError, match="output_budget_exceeded"):
