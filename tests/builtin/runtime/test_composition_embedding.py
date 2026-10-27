@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from pydantic import AnyHttpUrl
 from pydantic_ai import Embedder
 
 from powercontext.builtin.artifacts.memory import EmbeddingProfile, MemoryEntryInput
@@ -32,7 +33,7 @@ from powercontext.builtin.artifacts.topic_memory import (
 from powercontext.builtin.inference import EmbeddingResult
 from powercontext.builtin.persistence.sqlite import SQLiteConfig
 from powercontext.builtin.runtime import BuiltinConfig, open_builtin_contexts
-from powercontext.builtin.runtime.composition import _embedding_models
+from powercontext.builtin.runtime.composition import _embedding_models, _unbounded_provider_factory
 from powercontext.builtin.runtime.config import InferenceConfig
 
 
@@ -106,6 +107,23 @@ def test_embedding_models_without_configuration_return_no_models() -> None:
             operational, readiness = await _embedding_models(InferenceConfig(), resources, None)
         assert operational is None
         assert readiness is None
+
+    asyncio.run(scenario())
+
+
+def test_loopback_openai_provider_ignores_malformed_environment_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:12334")
+    monkeypatch.setenv("all_proxy", "socks://127.0.0.1:12334")
+
+    async def scenario() -> None:
+        async with AsyncExitStack() as resources:
+            factory = _unbounded_provider_factory(
+                AnyHttpUrl("http://127.0.0.1:18000/v1"),
+                {},
+                workload="generation",
+                resources=resources,
+            )
+            assert factory("openai-chat") is not None
 
     asyncio.run(scenario())
 

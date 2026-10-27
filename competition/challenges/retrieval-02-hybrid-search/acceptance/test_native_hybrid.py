@@ -86,7 +86,7 @@ async def test_seekdb_executes_one_native_hybrid_candidate_statement() -> None:
         assert revised_head is not None
         assert other_head is not None
         with _statements() as statements:
-            result = await memory.search("alpha", memories=(revised_head,), mode="hybrid", limit=1)
+            result = await memory.search("alpha", memories=(revised_head,), mode="hybrid", limit=10)
 
         native = [
             (statement, parameters)
@@ -98,24 +98,39 @@ async def test_seekdb_executes_one_native_hybrid_candidate_statement() -> None:
         ]
         assert len(native) == 1
         statement, parameters = native[0]
-        assert len(result.hits) == 1
+        assert result.hits
         assert result.hits[0].text == "Alpha semantic record."
         assert result.hits[0].matched_by == ("fts", "vector")
         assert result.hits[0].memory_ref.artifact_id == revised_head.artifact_id
         assert result.hits[0].memory_ref.revision == revised_head.revision
-        first_identity = (
-            result.hits[0].memory_ref,
-            result.hits[0].entry_id,
-            result.hits[0].entry_version_id,
-        )
 
-        repeated = await memory.search("alpha", memories=(revised_head,), mode="hybrid", limit=1)
-        repeated_identity = (
-            repeated.hits[0].memory_ref,
-            repeated.hits[0].entry_id,
-            repeated.hits[0].entry_version_id,
+        fts_baseline = await memory.search("alpha", memories=(revised_head,), mode="fts", limit=10)
+        vector_baseline = await memory.search("alpha", memories=(revised_head,), mode="vector", limit=10)
+
+        def identity(hit):
+            return (hit.memory_ref.artifact_id, hit.entry_id, hit.entry_version_id)
+
+        baseline_scores = {}
+        baseline_channels = {}
+        for channel, baseline in (("fts", fts_baseline), ("vector", vector_baseline)):
+            for hit in baseline.hits:
+                key = identity(hit)
+                baseline_scores[key] = baseline_scores.get(key, 0.0) + hit.score
+                baseline_channels.setdefault(key, []).append(channel)
+        expected = sorted(
+            baseline_scores,
+            key=lambda key: (-baseline_scores[key], key[0].encode(), key[1].encode(), key[2].encode()),
         )
-        assert repeated_identity == first_identity
+        assert [identity(hit) for hit in result.hits] == expected[: len(result.hits)]
+        for hit in result.hits:
+            key = identity(hit)
+            assert hit.score == pytest.approx(baseline_scores[key])
+            assert hit.matched_by == tuple(baseline_channels[key])
+
+        first_identity = tuple(identity(hit) for hit in result.hits)
+
+        repeated = await memory.search("alpha", memories=(revised_head,), mode="hybrid", limit=10)
+        assert tuple(identity(hit) for hit in repeated.hits) == first_identity
 
         with pytest.raises(CapabilityNotSupportedError):
             await memory.search("gamma", memories=(head,), mode="hybrid", limit=1)

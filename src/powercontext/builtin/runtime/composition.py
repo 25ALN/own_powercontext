@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
@@ -1629,6 +1630,7 @@ def _unbounded_provider_factory(
 
     def create_provider(provider_name: str) -> Provider[Any]:
         if provider_name in {"openai", "openai-chat", "openai-responses"}:
+            local_http_client = _loopback_http_client(base_url, resources)
             if headers:
                 from openai import AsyncOpenAI
 
@@ -1636,10 +1638,11 @@ def _unbounded_provider_factory(
                     base_url=None if base_url is None else str(base_url),
                     api_key=os.getenv("OPENAI_API_KEY") or "api-key-not-set",
                     default_headers=_resolve_headers(headers),
+                    http_client=local_http_client,
                 )
                 resources.push_async_callback(client.close)
                 return OpenAIProvider(openai_client=client)
-            return OpenAIProvider(base_url=str(base_url))
+            return OpenAIProvider(base_url=str(base_url), http_client=local_http_client)
         if provider_name == "anthropic" and workload == "generation":
             from anthropic import AsyncAnthropic
             from pydantic_ai.providers.anthropic import AnthropicProvider
@@ -1661,6 +1664,26 @@ def _unbounded_provider_factory(
         raise BuiltinConfigurationError("inference-endpoint-provider")
 
     return create_provider
+
+
+def _loopback_http_client(base_url: AnyHttpUrl | None, resources: AsyncExitStack):
+    """Keep local OpenAI-compatible providers off environment-configured proxies."""
+
+    if base_url is None:
+        return None
+    host = base_url.host.strip("[]").casefold().rstrip(".")
+    try:
+        is_loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        is_loopback = host == "localhost"
+    if not is_loopback:
+        return None
+
+    import httpx
+
+    client = httpx.AsyncClient(trust_env=False)
+    resources.push_async_callback(client.aclose)
+    return client
 
 
 def _resolve_headers(headers: Mapping[str, SecretStr]) -> dict[str, str]:

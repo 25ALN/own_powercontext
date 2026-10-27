@@ -238,25 +238,33 @@ class _RankedCitation:
     def add(self, query_rank: int, rank: int, question: str) -> None:
         self.rrf += 1 / (60 + rank + query_rank * 4)
         query_terms = _query_terms(question)
-        page_terms = Counter(_TOKEN_PATTERN.findall(self.text.casefold()))
+        page_text = _page_evidence_text(self.text)
+        page_terms = Counter(_TOKEN_PATTERN.findall(page_text.casefold()))
         if query_terms:
             matched = sum(min(page_terms[term], count) for term, count in query_terms.items())
             self.lexical = max(self.lexical, matched / sum(query_terms.values()))
             query_tokens = tuple(query_terms)
-            page_text = f" {' '.join(_TOKEN_PATTERN.findall(self.text.casefold()))} "
+            searchable_text = f" {' '.join(_TOKEN_PATTERN.findall(page_text.casefold()))} "
             for size in (2, 3):
                 phrases = tuple(
                     query_tokens[index : index + size] for index in range(len(query_tokens) - size + 1)
                 )
                 self.phrase = max(
                     self.phrase,
-                    max((float(f" {' '.join(tokens)} " in page_text) for tokens in phrases), default=0.0),
+                    max((float(f" {' '.join(tokens)} " in searchable_text) for tokens in phrases), default=0.0),
                 )
 
     @property
     def sort_key(self) -> tuple[float, float, float, str, str]:
         score = self.rrf + self.lexical * 0.02 + self.phrase * 0.005
         return (-score, -self.lexical, -self.phrase, self.citation.entry_id, self.citation.entry_version_id)
+
+
+def _page_evidence_text(text: str) -> str:
+    """Exclude the projection's document identity line from page relevance evidence."""
+
+    _document_id, separator, page_text = text.partition("\n")
+    return page_text if separator else text
 
 
 def _query_variants(question: str) -> tuple[str, ...]:

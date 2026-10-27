@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 from types import SimpleNamespace
@@ -138,6 +139,30 @@ async def test_search_merges_duplicate_candidates_and_obeys_limit() -> None:
     assert len(citations) == 1
     assert citations[0].entry_id == "entry-1"
     assert citations[0].entry_version_id == "version-1"
+
+
+def test_search_does_not_score_document_identity_as_page_evidence() -> None:
+    memory_ref = ArtifactRef(family="memory", artifact_id="main", revision=1)
+    identity_only = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-1",
+        entry_version_id="version-1",
+        text="PepsiCo_2022_10K\nThis page contains unrelated disclosures.",
+    )
+    evidence_page = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-2",
+        entry_version_id="version-2",
+        text="PepsiCo_2022_10K\nRevenue climbed in FY2022.",
+    )
+
+    class Memory:
+        async def search(self, request, /):
+            return SimpleNamespace(hits=(identity_only, evidence_page))
+
+    citations = asyncio.run(search_pdf_pages(Memory(), "PepsiCo 2022 revenue", limit=2))
+
+    assert [citation.entry_id for citation in citations] == ["entry-2", "entry-1"]
 
 
 def test_query_variants_include_overlapping_content_windows() -> None:
