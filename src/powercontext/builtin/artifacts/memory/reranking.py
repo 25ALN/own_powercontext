@@ -16,14 +16,18 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from powercontext.builtin.artifacts.memory.models import MemoryHit
 from powercontext.builtin.inference import InferenceUsage, StructuredGenerator
+
+if TYPE_CHECKING:
+    import httpx
 
 MEMORY_RERANK_INSTRUCTIONS_VERSION = "powercontext.memory.rerank.listwise.v1"
 MEMORY_RERANK_INSTRUCTIONS = f"""
@@ -154,6 +158,91 @@ class LLMMemoryReranker:
         )
 
 
+class HTTPMemoryReranker:
+    """Score Memory candidates through a bounded-batch HTTP service."""
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        client: httpx.AsyncClient,
+        batch_size: int = 32,
+        policy_id: str = "http-cross-encoder-v1",
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")  # noqa: TRY003
+        self.endpoint = endpoint
+        self._client = client
+        self.batch_size = batch_size
+        self.policy_id = policy_id
+
+    async def rerank(
+        self,
+        query: str,
+        candidates: tuple[MemoryHit, ...],
+        limit: int,
+        /,
+    ) -> MemoryRerankDecision:
+        """Score each candidate exactly once and select by global score order."""
+
+        _validate_bounds(len(candidates), limit)
+        scores: dict[int, float] = {}
+        requests = 0
+        for offset in range(0, len(candidates), self.batch_size):
+            batch = candidates[offset : offset + self.batch_size]
+            ranks = tuple(range(offset + 1, offset + len(batch) + 1))
+            response = await self._client.post(
+                self.endpoint,
+                json={
+                    "query": query,
+                    "candidates": [
+                        {"rank": rank, "text": candidate.text}
+                        for rank, candidate in zip(ranks, batch, strict=True)
+                    ],
+                },
+            )
+            requests += 1
+            response.raise_for_status()
+            try:
+                payload = response.json()
+            except (ValueError, UnicodeDecodeError) as error:
+                raise ValueError("reranker response must be valid JSON") from error  # noqa: TRY003
+            scores.update(_validate_score_response(payload, ranks))
+        selected_ranks = tuple(sorted(scores, key=lambda rank: (-scores[rank], rank))[:limit])
+        return MemoryRerankDecision(selected_ranks=selected_ranks, usage=InferenceUsage(requests=requests))
+
+
+def _validate_score_response(payload: object, expected_ranks: tuple[int, ...]) -> dict[int, float]:
+    if not isinstance(payload, dict):
+        raise ValueError("reranker response must contain only a scores list")  # noqa: TRY003, TRY004
+    payload = cast(dict[str, object], payload)
+    records = payload.get("scores")
+    if set(payload) != {"scores"} or not isinstance(records, list):
+        raise ValueError("reranker response must contain only a scores list")  # noqa: TRY003
+    scores: dict[int, float] = {}
+    expected = set(expected_ranks)
+    for item in records:
+        if not isinstance(item, dict) or set(item) != {"rank", "score"}:
+            raise ValueError("each reranker score must contain only rank and score")  # noqa: TRY003
+        item = cast(dict[str, object], item)
+        rank = item["rank"]
+        score = item["score"]
+        if type(rank) is not int or rank not in expected or rank in scores:
+            raise ValueError("reranker scores must cover each batch rank exactly once")  # noqa: TRY003
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            raise ValueError("reranker score must be a finite number")  # noqa: TRY003, TRY004
+        try:
+            normalized_score = float(score)
+        except OverflowError as error:
+            raise ValueError("reranker score must be a finite number") from error  # noqa: TRY003
+        if not math.isfinite(normalized_score):
+            raise ValueError("reranker score must be a finite number")  # noqa: TRY003
+        scores[rank] = normalized_score
+    if scores.keys() != expected:
+        raise ValueError("reranker scores must cover each batch rank exactly once")  # noqa: TRY003
+    return scores
+
+
 def _normalize_ranks(
     selected_ranks: tuple[int, ...],
     *,
@@ -184,6 +273,7 @@ def _validate_bounds(candidate_count: int, limit: int) -> None:
 __all__ = [
     "MEMORY_RERANK_INSTRUCTIONS",
     "MEMORY_RERANK_INSTRUCTIONS_VERSION",
+    "HTTPMemoryReranker",
     "LLMMemoryReranker",
     "MemoryRerankCandidate",
     "MemoryRerankDecision",
