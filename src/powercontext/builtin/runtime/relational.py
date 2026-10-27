@@ -190,6 +190,7 @@ from powercontext.builtin.runtime.protocols import (
 )
 from powercontext.builtin.runtime.recall import RelationalRecallTokenEstimator
 from powercontext.builtin.runtime.recurrence import RelationalRecurrenceLedger
+from powercontext.builtin.runtime.source_lifecycle import SourceLifecycleApplication
 from powercontext.builtin.runtime.statistics import RelationalScopedStatistics
 from powercontext.builtin.scope import ScopeApplication
 from powercontext.builtin.scope.subject_sources import SubjectSourceService
@@ -508,6 +509,14 @@ class _ScopedServices:
         )
 
 
+class _LifecycleMemoryFactory:
+    def __init__(self, contexts: RelationalContexts) -> None:
+        self._contexts = contexts
+
+    async def get(self, scope_id: str, /):
+        return await self._contexts.get(scope_id)
+
+
 class RelationalContexts:
     """Compose typed, scope-bound contexts without owning the database lifecycle."""
 
@@ -582,6 +591,12 @@ class RelationalContexts:
             processing_leases=ArtifactProcessingLeaseRepository(),
             processing_binding_states=ArtifactProcessingBindingStateRepository(),
             topic_memories=topic_memory_repository,
+        )
+        self.lifecycle = SourceLifecycleApplication(
+            database,
+            source_repository=source_repository,
+            artifact_repository=artifact_repository,
+            memory_factory=_LifecycleMemoryFactory(self),
         )
         self._model_usage = _ModelUsageRecorder(
             database,

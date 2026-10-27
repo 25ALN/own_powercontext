@@ -33,6 +33,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.mysql import BINARY, MEDIUMBLOB, MEDIUMTEXT, VARCHAR
 
+from powercontext.builtin.persistence.source_lifecycle import LIFECYCLE_TABLES
 from powercontext.limits import (
     MAX_ARTIFACT_FAMILY_LENGTH,
     MAX_ARTIFACT_ID_LENGTH,
@@ -1188,4 +1189,5 @@ BUILTIN_TABLES = (
     + STATISTICS_TABLES
     + RECURRENCE_TABLES
     + (ARTIFACT_TAGS_TABLE, DREAM_RUNS_TABLE, RECEIPT_MIGRATION_REVIEW_TABLE)
+    + LIFECYCLE_TABLES
 )
