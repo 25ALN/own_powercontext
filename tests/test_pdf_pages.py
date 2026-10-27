@@ -172,3 +172,36 @@ def test_query_variants_include_overlapping_content_windows() -> None:
 
     assert "fy 2022 unadjusted ebitda" in variants
     assert any("pepsico annual report" in variant for variant in variants)
+
+
+def test_query_variants_keep_windows_from_the_end_of_long_questions() -> None:
+    from powercontext.sources.pdf_pages import _QUERY_VARIANTS, _query_variants
+
+    terms = [f"term{chr(97 + index // 26)}{chr(97 + index % 26)}" for index in range(30)]
+    variants = _query_variants(" ".join(terms))
+
+    assert len(variants) <= _QUERY_VARIANTS
+    assert any(terms[-1] in variant for variant in variants[2:])
+
+
+def test_query_terms_ignore_common_filler_and_initials() -> None:
+    from powercontext.sources.pdf_pages import _query_terms
+
+    terms = _query_terms("Are there any legal battles? If not, PepsiCo's D&A and P&L")
+    calculation_terms = _query_terms("unadjusted EBITDA less capex")
+
+    assert terms == {"legal": 1, "battles": 1, "pepsico": 1}
+    assert calculation_terms == {"unadjusted": 1, "ebitda": 1, "less": 1, "capex": 1}
+
+
+def test_query_variant_rank_does_not_reduce_equal_rank_rrf_contribution() -> None:
+    from powercontext.sources.pdf_pages import _RankedCitation
+
+    citation = SimpleNamespace(memory_ref=None, entry_id="entry", entry_version_id="version")
+    early = _RankedCitation(citation=citation, text="evidence")
+    late = _RankedCitation(citation=citation, text="evidence")
+
+    early.add(3, "evidence")
+    late.add(3, "evidence")
+
+    assert late.rrf == early.rrf

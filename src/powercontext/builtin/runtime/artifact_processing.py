@@ -118,9 +118,9 @@ class ArtifactProcessingBinding:
     # Only automatic admission is filtered; already accepted requests retain
     # their own Worker authorization and domain completion semantics.
     automatic_scope_filter: Callable[[AsyncConnection, tuple[str, ...]], Awaitable[frozenset[str]]] | None = None
-    automatic_count_trigger_filter: Callable[
-        [AsyncConnection, tuple[str, ...]], Awaitable[frozenset[str]]
-    ] | None = None
+    automatic_count_trigger_filter: Callable[[AsyncConnection, tuple[str, ...]], Awaitable[frozenset[str]]] | None = (
+        None
+    )
 
     def __post_init__(self) -> None:
         if not self.binding_name or self.binding_name != self.binding_name.strip():
@@ -1046,7 +1046,12 @@ class ArtifactProcessingSupervisor:
             with suppress(asyncio.CancelledError):
                 await self._renew_task
             self._renew_task = None
-        # Revoke the term before cancellation can leave an unobservable child.
+        tasks = [worker.task for state in self._families.values() for worker in state.running.values()]
+        # During orderly shutdown no successor can be dispatched. Reap children
+        # first so a worker holding a SQLite write lock cannot block lease
+        # revocation; leadership loss still fences before cancelling its workers.
+        if self._stop.is_set():
+            await self._cancel_running_workers(tasks)
         if fence is not None:
             try:
                 async with self._database.transaction() as connection:
@@ -1062,15 +1067,9 @@ class ArtifactProcessingSupervisor:
                     )
             except Exception as error:
                 self._log_failure(None, None, error, "term_revocation")
-        tasks = [worker.task for state in self._families.values() for worker in state.running.values()]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, _WorkerTerminationError) and result.handle not in self._unreaped:
-                    self._unreaped.append(result.handle)
-        await self._reap_unconfirmed_exits()
+        if not self._stop.is_set():
+            await self._cancel_running_workers(tasks)
+
         for state in self._families.values():
             state.running.clear()
             state.ready.clear()
@@ -1082,6 +1081,16 @@ class ArtifactProcessingSupervisor:
             state.scan_in_progress = False
             state.scan_scheduled = False
             state.discovery_pending = True
+
+    async def _cancel_running_workers(self, tasks: list[asyncio.Task[ArtifactProcessingWorkerCompletion]]) -> None:
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, _WorkerTerminationError) and result.handle not in self._unreaped:
+                    self._unreaped.append(result.handle)
+        await self._reap_unconfirmed_exits()
 
     async def _reap_unconfirmed_exits(self) -> None:
         for handle in tuple(self._unreaped):

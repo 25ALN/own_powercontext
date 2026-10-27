@@ -35,10 +35,64 @@ if TYPE_CHECKING:
 
 PDF_PAGE_SOURCE_NAME = "pdf-page"
 _TOKEN_PATTERN = re.compile(r"[a-z]+|\d+", re.IGNORECASE)
-_QUERY_STOP_WORDS = frozenset(
-    ["a", "an", "and", "are", "as", "at", "be", "been", "by", "can", "define", "did", "do", "does", "for", "from", "give", "has", "have", "how", "in", "into", "is", "it", "its", "less", "of", "on", "or", "primarily", "reported", "should", "state", "that", "the", "their", "then", "these", "this", "to", "use", "what", "when", "where", "which", "who", "with", "within"]
-)
-_QUERY_VARIANTS = 8
+_QUERY_STOP_WORDS = frozenset([
+    "a",
+    "an",
+    "and",
+    "any",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "by",
+    "can",
+    "d",
+    "define",
+    "did",
+    "do",
+    "does",
+    "for",
+    "from",
+    "give",
+    "has",
+    "have",
+    "how",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "l",
+    "not",
+    "of",
+    "on",
+    "or",
+    "p",
+    "primarily",
+    "reported",
+    "s",
+    "should",
+    "state",
+    "that",
+    "the",
+    "their",
+    "then",
+    "these",
+    "this",
+    "there",
+    "to",
+    "use",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "with",
+    "within",
+])
+_QUERY_VARIANTS = 12
 _CANDIDATE_MULTIPLIER = 8
 
 
@@ -199,7 +253,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     variants = _query_variants(question)
     candidate_limit = max(limit, min(160, limit * _CANDIDATE_MULTIPLIER))
     candidates: dict[tuple[str, str, str, int], _RankedCitation] = {}
-    for query_rank, query in enumerate(variants):
+    for query in variants:
         page = await memory.search(SearchMemoryRequest(query=query, limit=candidate_limit, mode="fts"))
         for rank, hit in enumerate(page.hits, start=1):
             key = (
@@ -219,7 +273,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
                     text=hit.text,
                 )
                 candidates[key] = item
-            item.add(query_rank, rank, question)
+            item.add(rank, question)
 
     ranked = sorted(candidates.values(), key=lambda item: item.sort_key)
     return tuple(item.citation for item in ranked[:limit])
@@ -235,8 +289,8 @@ class _RankedCitation:
         self.lexical = 0.0
         self.phrase = 0.0
 
-    def add(self, query_rank: int, rank: int, question: str) -> None:
-        self.rrf += 1 / (60 + rank + query_rank * 4)
+    def add(self, rank: int, question: str) -> None:
+        self.rrf += 1 / (60 + rank)
         query_terms = _query_terms(question)
         page_text = _page_evidence_text(self.text)
         page_terms = Counter(_TOKEN_PATTERN.findall(page_text.casefold()))
@@ -246,9 +300,7 @@ class _RankedCitation:
             query_tokens = tuple(query_terms)
             searchable_text = f" {' '.join(_TOKEN_PATTERN.findall(page_text.casefold()))} "
             for size in (2, 3):
-                phrases = tuple(
-                    query_tokens[index : index + size] for index in range(len(query_tokens) - size + 1)
-                )
+                phrases = tuple(query_tokens[index : index + size] for index in range(len(query_tokens) - size + 1))
                 self.phrase = max(
                     self.phrase,
                     max((float(f" {' '.join(tokens)} " in searchable_text) for tokens in phrases), default=0.0),
@@ -278,7 +330,15 @@ def _query_variants(question: str) -> tuple[str, ...]:
             if windows and windows[-1][-1] != terms[-1]:
                 windows.append(terms[-4:])
             variants.extend(" ".join(window) for window in windows)
-    return tuple(dict.fromkeys(variant for variant in variants if variant))[:_QUERY_VARIANTS]
+    variants = list(dict.fromkeys(variant for variant in variants if variant))
+    if len(variants) <= _QUERY_VARIANTS:
+        return tuple(variants)
+
+    fixed = variants[:2]
+    windows = variants[2:]
+    slots = _QUERY_VARIANTS - len(fixed)
+    selected = tuple(windows[index * (len(windows) - 1) // (slots - 1)] for index in range(slots))
+    return (*fixed, *selected)
 
 
 def _query_terms(question: str) -> Counter[str]:
