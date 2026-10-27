@@ -525,9 +525,13 @@ class ArtifactProcessingSupervisor:
         self._stop.set()
         self._wake.set()
         if self._task is not None:
-            self._task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._task
+            try:
+                async with asyncio.timeout(_DISCOVERY_TIMEOUT_SECONDS + 2 * _WORKER_SHUTDOWN_TIMEOUT_SECONDS):
+                    await asyncio.shield(self._task)
+            except TimeoutError:
+                self._task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._task
             self._task = None
         if self._unreaped:
             raise _WorkerTerminationError(self._unreaped[0])
@@ -617,6 +621,8 @@ class ArtifactProcessingSupervisor:
             await self._reap(state)
             if self._fence is None or self._lease_lost:
                 raise ArtifactProcessingLeadershipLostError(self._supervisor_group, self.holder_id, 0)
+            if self._stop.is_set():
+                continue
             now = asyncio.get_running_loop().time()
             # Reserve fresh admission before retries can occupy a newly freed
             # Worker. FIFO ready order then shares execution between channels.
@@ -1051,6 +1057,9 @@ class ArtifactProcessingSupervisor:
         # first so a worker holding a SQLite write lock cannot block lease
         # revocation; leadership loss still fences before cancelling its workers.
         if self._stop.is_set():
+            if tasks:
+                await asyncio.wait(tasks, timeout=_WORKER_SHUTDOWN_TIMEOUT_SECONDS)
+                tasks = [task for task in tasks if not task.done()]
             await self._cancel_running_workers(tasks)
         if fence is not None:
             try:
