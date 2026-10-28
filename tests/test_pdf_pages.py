@@ -141,6 +141,22 @@ async def test_search_merges_duplicate_candidates_and_obeys_limit() -> None:
     assert citations[0].entry_version_id == "version-1"
 
 
+async def test_search_uses_deeper_candidate_pool_for_recall() -> None:
+    from powercontext.sources.pdf_pages import _MAX_SEARCH_CANDIDATES
+
+    requests = []
+
+    class Memory:
+        async def search(self, request, /):
+            requests.append(request)
+            return SimpleNamespace(hits=())
+
+    await search_pdf_pages(Memory(), "What is FY2022 unadjusted EBITDA less capex?", limit=20)
+
+    assert requests
+    assert all(request.limit == min(_MAX_SEARCH_CANDIDATES, 20 * 12) for request in requests)
+
+
 def test_search_does_not_score_document_identity_as_page_evidence() -> None:
     memory_ref = ArtifactRef(family="memory", artifact_id="main", revision=1)
     identity_only = SimpleNamespace(
@@ -182,6 +198,24 @@ def test_query_variants_keep_windows_from_the_end_of_long_questions() -> None:
 
     assert len(variants) <= _QUERY_VARIANTS
     assert any(terms[-1] in variant for variant in variants[2:])
+
+
+def test_query_variants_keep_financial_terms_from_long_questions() -> None:
+    from powercontext.sources.pdf_pages import _QUERY_VARIANTS, _query_variants
+
+    question = (
+        "What is the FY2022 unadjusted EBITDA less capex for PepsiCo? Define unadjusted EBITDA as "
+        "unadjusted operating income plus depreciation and amortization from the cash flow statement. "
+        "Answer in USD millions, using only details shown within the income statement."
+    )
+
+    variants = _query_variants(question)
+
+    assert len(variants) <= _QUERY_VARIANTS
+    assert any("ebitda" in variant for variant in variants)
+    assert any("capex" in variant for variant in variants)
+    assert any("depreciation" in variant for variant in variants)
+    assert any("cash flow statement" in variant for variant in variants)
 
 
 def test_query_terms_ignore_common_filler_and_initials() -> None:

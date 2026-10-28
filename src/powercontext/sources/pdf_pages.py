@@ -121,8 +121,9 @@ _QUERY_TERM_ALIASES = {
     "battle": ("legal proceedings", "litigation", "lawsuit"),
     "capex": ("capital expenditures", "capital spending"),
 }
-_QUERY_VARIANTS = 12
-_CANDIDATE_MULTIPLIER = 8
+_QUERY_VARIANTS = 24
+_CANDIDATE_MULTIPLIER = 12
+_MAX_SEARCH_CANDIDATES = 320
 
 
 class _PDFPasswordRequiredError(Exception):
@@ -280,7 +281,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     from powercontext.builtin.runtime import SearchMemoryRequest
 
     variants = _query_variants(question)
-    candidate_limit = max(limit, min(160, limit * _CANDIDATE_MULTIPLIER))
+    candidate_limit = max(limit, min(_MAX_SEARCH_CANDIDATES, limit * _CANDIDATE_MULTIPLIER))
     candidates: dict[tuple[str, str, str, int], _RankedCitation] = {}
     for query in variants:
         page = await memory.search(SearchMemoryRequest(query=query, limit=candidate_limit, mode="fts"))
