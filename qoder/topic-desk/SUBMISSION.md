@@ -13,9 +13,10 @@
 
 ## 2. 代码仓库
 
-- ⬜ 最终仓库地址（需在测试平台提交前填写；评审需可访问）
+- ✅ 最终仓库地址（公开，评审可直接访问）：<https://github.com/25ALN/own_powercontext>
+- ✅ 项目目录链接：<https://github.com/25ALN/own_powercontext/tree/2026-competition-ecosystem/qoder/topic-desk>
 - 项目代码位置：`qoder/topic-desk/`（基于 `2026-competition-ecosystem` 分支开发）
-- ✅ 代码已提交到分支：commit `75a18c0c`（feat(qoder): add topic-desk project，18 个文件）
+- ✅ 代码已提交并推送到远程分支：commit `5a3818c7`（分支地址：<https://github.com/25ALN/own_powercontext/tree/2026-competition-ecosystem>，已验证未登录可访问）
 
 ## 3. 运行说明
 
