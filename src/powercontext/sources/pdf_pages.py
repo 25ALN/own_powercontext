@@ -291,24 +291,30 @@ class _RankedCitation:
 
     def add(self, rank: int, question: str) -> None:
         self.rrf += 1 / (60 + rank)
-        query_terms = _query_terms(question)
+        query_terms = tuple(_query_terms(question))
         page_text = _page_evidence_text(self.text)
         page_terms = Counter(_TOKEN_PATTERN.findall(page_text.casefold()))
         if query_terms:
-            matched = sum(min(page_terms[term], count) for term, count in query_terms.items())
-            self.lexical = max(self.lexical, matched / sum(query_terms.values()))
-            query_tokens = tuple(query_terms)
-            searchable_text = f" {' '.join(_TOKEN_PATTERN.findall(page_text.casefold()))} "
-            for size in (2, 3):
-                phrases = tuple(query_tokens[index : index + size] for index in range(len(query_tokens) - size + 1))
-                self.phrase = max(
-                    self.phrase,
-                    max((float(f" {' '.join(tokens)} " in searchable_text) for tokens in phrases), default=0.0),
-                )
+            matched = tuple(term for term in query_terms if page_terms[term])
+            self.lexical = max(self.lexical, len(matched) / len(query_terms))
+            page_tokens = _TOKEN_PATTERN.findall(page_text.casefold())
+            searchable_text = f" {' '.join(page_tokens)} "
+            longest_run = max(
+                (
+                    size
+                    for size in range(min(len(query_terms), 4), 1, -1)
+                    if any(
+                        f" {' '.join(query_terms[index : index + size])} " in searchable_text
+                        for index in range(len(query_terms) - size + 1)
+                    )
+                ),
+                default=0,
+            )
+            self.phrase = max(self.phrase, longest_run / 4)
 
     @property
     def sort_key(self) -> tuple[float, float, float, str, str]:
-        score = self.rrf + self.lexical * 0.02 + self.phrase * 0.005
+        score = self.rrf + self.lexical * 0.2 + self.phrase * 0.05
         return (-score, -self.lexical, -self.phrase, self.citation.entry_id, self.citation.entry_version_id)
 
 

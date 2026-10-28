@@ -742,7 +742,11 @@ class ArtifactProcessingSupervisor:
                 if persisted is None or not persisted.scan_in_progress:
                     checkpoint = None if persisted is None else persisted.last_schedule_checkpoint_at
                     due, next_time = _schedule_deadline(binding, checkpoint, now)
-                    next_schedule_at = asyncio.get_running_loop().time() + max(0, (next_time - now).total_seconds())
+                    next_schedule_at = (
+                        None
+                        if binding.automatic_processing_interval is None and binding.cron is None
+                        else asyncio.get_running_loop().time() + max(0, (next_time - now).total_seconds())
+                    )
                     if due is not None:
                         persisted = await self._binding_states.start_scan(connection, binding.binding_name, due)
                         scan_after = 0
@@ -797,7 +801,11 @@ class ArtifactProcessingSupervisor:
                         # Starting a scan established its checkpoint, so a
                         # completed page must not restart the interval here.
                         _, next_time = _schedule_deadline(binding, persisted.last_schedule_checkpoint_at, now)
-                        next_schedule_at = asyncio.get_running_loop().time() + max(0, (next_time - now).total_seconds())
+                        next_schedule_at = (
+                            None
+                            if binding.automatic_processing_interval is None and binding.cron is None
+                            else asyncio.get_running_loop().time() + max(0, (next_time - now).total_seconds())
+                        )
                     else:
                         next_discovery_at = asyncio.get_running_loop().time() + _DISCOVERY_PAGE_DELAY_SECONDS
         state.scan_after = scan_after
@@ -1041,7 +1049,7 @@ class ArtifactProcessingSupervisor:
             finally:
                 if not retain_slot:
                     state.running.pop(scope, None)
-                    self.wake(state.binding.binding_name)
+                    self.wake()
 
     async def _lose_leadership(self) -> None:
         fence, self._fence = self._fence, None
@@ -1059,7 +1067,6 @@ class ArtifactProcessingSupervisor:
         if self._stop.is_set():
             if tasks:
                 await asyncio.wait(tasks, timeout=_WORKER_SHUTDOWN_TIMEOUT_SECONDS)
-                tasks = [task for task in tasks if not task.done()]
             await self._cancel_running_workers(tasks)
         if fence is not None:
             try:
@@ -1133,7 +1140,7 @@ class ArtifactProcessingSupervisor:
                 continue
             if state.next_schedule_at is not None:
                 deadlines.append(state.next_schedule_at)
-            if state.binding.automatic_count_trigger:
+            if state.binding.automatic_count_trigger and self._lease_mode == "oceanbase":
                 deadlines.append(now + self._tick)
             if state.discovery_pending or state.scan_in_progress or not state.reconcile_complete or state.degraded:
                 deadlines.append(max(now, state.next_discovery_at))
@@ -1179,6 +1186,8 @@ class ArtifactProcessingSupervisor:
 def _schedule_deadline(
     binding: ArtifactProcessingBinding, checkpoint: datetime | None, now: datetime
 ) -> tuple[datetime | None, datetime]:
+    if binding.automatic_processing_interval is None and binding.cron is None:
+        return None, now
     if checkpoint is None:
         return now, now
     if binding.automatic_processing_interval is not None:

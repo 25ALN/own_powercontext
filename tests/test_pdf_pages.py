@@ -205,3 +205,27 @@ def test_query_variant_rank_does_not_reduce_equal_rank_rrf_contribution() -> Non
     late.add(3, "evidence")
 
     assert late.rrf == early.rrf
+
+
+def test_search_prefers_distinct_query_term_coverage_over_repeated_term_hits() -> None:
+    memory_ref = ArtifactRef(family="memory", artifact_id="main", revision=1)
+    broad_match = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-1",
+        entry_version_id="version-1",
+        text="Report\nRevenue was stable.",
+    )
+    evidence_page = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-2",
+        entry_version_id="version-2",
+        text="Report\nRevenue decreased as capex declined.",
+    )
+
+    class Memory:
+        async def search(self, request, /):
+            return SimpleNamespace(hits=(broad_match, evidence_page))
+
+    citations = asyncio.run(search_pdf_pages(Memory(), "revenue revenue revenue capex", limit=2))
+
+    assert [citation.entry_id for citation in citations] == ["entry-2", "entry-1"]

@@ -490,10 +490,12 @@ class ScopedSourceApplication:
                             span.set_attributes({_MEMORY_CAPTURE_SOURCE_COUNT: 1})
             except BaseValueConflictError as error:
                 raise SourceConflictError("identity", error.identity) from None
-            return SourceReceipt(
+            receipt = SourceReceipt(
                 source_ref=SourceRef(source_type=record.source_type, source_id=record.source_id),
                 sequence=record.position,
             )
+            self._runtime._wake_artifact_processing()
+            return receipt
         async with self._runtime._context(self.scope_id) as context:
             with self._runtime._stage(_MEMORY_CAPTURE_STAGE, attributes={}) as span:
                 source, sequence = await context.sources.capture(
@@ -506,7 +508,9 @@ class ScopedSourceApplication:
                 )
                 if span is not None:
                     span.set_attributes({_MEMORY_CAPTURE_SOURCE_COUNT: 1})
-            return SourceReceipt(source_ref=context.sources.catalog.as_ref(source), sequence=sequence)
+            receipt = SourceReceipt(source_ref=context.sources.catalog.as_ref(source), sequence=sequence)
+        self._runtime._wake_artifact_processing()
+        return receipt
 
 
 class SourceApplication:
@@ -533,11 +537,13 @@ class ScopedRecordApplication:
         /,
     ) -> SourceRecord:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().create_source(
+            record = await self._runtime._records().create_source(
                 self.scope_id,
                 source_type,
                 content,
             )
+        self._runtime._wake_artifact_processing()
+        return record
 
     async def get_source(self, source_type: str, source_id: str, /) -> SourceRecord:
         async with self._runtime._scope_operation(self.scope_id):
@@ -565,7 +571,9 @@ class ScopedRecordApplication:
         /,
     ) -> ArtifactCreated:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().create_artifact(self.scope_id, family, write)
+            artifact = await self._runtime._records().create_artifact(self.scope_id, family, write)
+        self._runtime._wake_artifact_processing()
+        return artifact
 
     async def get_artifact(self, family: str, artifact_id: str, /) -> ArtifactRecord:
         async with self._runtime._scope_operation(self.scope_id):
@@ -648,13 +656,15 @@ class ScopedRecordApplication:
         /,
     ) -> ArtifactRecord:
         async with self._runtime._scope_operation(self.scope_id), self._runtime._locked(self.scope_id):
-            return await self._runtime._records().replace_artifact(
+            artifact = await self._runtime._records().replace_artifact(
                 self.scope_id,
                 family,
                 artifact_id,
                 expected_etag,
                 write,
             )
+        self._runtime._wake_artifact_processing()
+        return artifact
 
 
 class RecordApplication:
@@ -3200,6 +3210,10 @@ class BuiltinRuntime:
     async def capabilities(self) -> RuntimeCapabilities:
         async with self._operation():
             return self._capabilities
+
+    def _wake_artifact_processing(self) -> None:
+        if self.artifact_processing_supervisor is not None:
+            self.artifact_processing_supervisor.wake()
 
     async def readiness(self) -> RuntimeReadiness:
         """Check whether the Runtime and its assembled dependencies can accept work."""

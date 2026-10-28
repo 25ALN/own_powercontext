@@ -73,6 +73,13 @@ async def _count_filter(_connection, scopes, /):
     return frozenset(scope for scope in scopes if scope == "qualified")
 
 
+def test_unscheduled_binding_has_no_immediate_schedule_deadline():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    binding = ArtifactProcessingBinding("memory-binding", "memory", _Launcher(None))
+
+    assert processing._schedule_deadline(binding, None, now) == (None, now)
+
+
 class _Launcher:
     def __init__(self, database, *, on_work=None, gates=None):
         self.database = database
