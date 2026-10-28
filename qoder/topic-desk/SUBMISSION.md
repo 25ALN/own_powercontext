@@ -6,7 +6,7 @@
 
 - ✅ 站点已发布且可见范围为「任何人都可访问」：<https://topic-desk-yu4evrjfz5b.qoder.zone>
 - 已验证：未登录状态下首页与截图资源均返回 HTTP 200（2026-10-28 验证）
-- 站点素材：`site/` 目录（含 `site/screenshots/` 截图），发布产物副本在会话根目录 `qoder/topic-desk-site/dist/`
+- 站点素材：`site/` 目录（含项目演示截图）；Qoder 开发记录见 `evidence/`
 - 注意：请使用个人账号发布（企业版无法公开访问）；本站点由当前个人账号发布
 - 提交前请再用浏览器无痕窗口打开确认
 - 评审结束前请勿暂停或删除站点；发布后修改内容需再次点击「发布」
@@ -16,7 +16,8 @@
 - ✅ 最终仓库地址（公开，评审可直接访问）：<https://github.com/25ALN/own_powercontext>
 - ✅ 项目目录链接：<https://github.com/25ALN/own_powercontext/tree/2026-competition-ecosystem/qoder/topic-desk>
 - 项目代码位置：`qoder/topic-desk/`（基于 `2026-competition-ecosystem` 分支开发）
-- ✅ 项目代码提交为 `75a18c0c`（feat(qoder): add topic-desk project）；当前分支最新提交为 `1038dbc2`（分支地址：<https://github.com/25ALN/own_powercontext/tree/2026-competition-ecosystem>，已验证未登录可访问）
+- ✅ 项目代码提交为 `75a18c0c`（feat(qoder): add topic-desk project）；后续清单修订均在同一参赛分支上。提交平台时请填写 `2026-competition-ecosystem` 分支当前 HEAD 的完整 commit ID。
+- ✅ 参赛分支：<https://github.com/25ALN/own_powercontext/tree/2026-competition-ecosystem>
 
 ## 3. 运行说明
 
@@ -30,8 +31,10 @@
 ## 5. Qoder 开发记录
 
 - ✅ 见 [DEVELOPMENT.md](DEVELOPMENT.md)：需求拆解、接口调研、关键调试过程、实现与验证阶段
-- ⬜ 提交前需补充：关键开发环节的 Qoder 对话截图或录屏，以及 Qoder 账号 UID
-- ⬜ Qoder 账号 UID：`<待填写>`
+- ✅ Qoder 账号 UID：`01a17d52-9d8a-78f2-91ba-68a5ce18ee7f`
+- ✅ 关键开发环节截图：[任务要求与提示词](evidence/qoder-prompt-and-task.png)、[开发调试与 Sites 发布](evidence/qoder-development-and-site.png)
+- ✅ 开发过程录屏：[Qoder 开发记录](evidence/qoder-development-recording.webm)
+- 以上截图和录屏为 Qoder 会话的原始记录，供评审核验；网站「开发记录」区域也提供访问链接。
 
 ## 6. 真实使用效果材料（鼓励提交，非必需）
 
