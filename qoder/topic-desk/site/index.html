@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>课题续研台 · 用 PowerContext 让课题跨会话续研</title>
+<meta name="description" content="课题续研台：面向学生与科研人员的课题管理工具。笔记、来源证据与交接状态全部持久化在 PowerContext，重启后一切都在。" />
+<style>
+:root {
+  --ink: #1c2430;
+  --ink-soft: #4b5a6b;
+  --paper: #f7f8fa;
+  --card: #ffffff;
+  --line: #e3e8ee;
+  --brand: #1f5eff;
+  --brand-deep: #123fbb;
+  --brand-wash: #eef3ff;
+  --ok: #0e7a4a;
+  --ok-wash: #e9f7f0;
+  --maxw: 1040px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.75;
+}
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* header */
+header {
+  background: linear-gradient(160deg, #0d2f7a 0%, #123fbb 55%, #1f5eff 100%);
+  color: #fff;
+  padding: 56px 0 64px;
+}
+.kicker {
+  display: inline-block;
+  font-size: 13px;
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  border: 1px solid rgba(255,255,255,.4);
+  border-radius: 999px;
+  margin-bottom: 18px;
+}
+h1 { margin: 0 0 14px; font-size: 40px; line-height: 1.25; }
+.tagline { font-size: 18px; max-width: 640px; color: #dbe6ff; margin: 0 0 26px; }
+.header-meta { display: flex; flex-wrap: wrap; gap: 10px; }
+.chip {
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+/* sections */
+section { padding: 56px 0 8px; }
+h2 {
+  font-size: 28px;
+  margin: 0 0 8px;
+}
+.sub { color: var(--ink-soft); margin: 0 0 28px; max-width: 720px; }
+.rule { height: 3px; width: 56px; background: var(--brand); border-radius: 2px; margin: 0 0 22px; }
+
+.grid { display: grid; gap: 20px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+}
+.card h3 { margin: 0 0 10px; font-size: 18px; }
+.card p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+
+.pain { border-top: 3px solid #d64545; }
+.cure { border-top: 3px solid var(--ok); }
+
+/* flow */
+.flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; counter-reset: step; }
+.step {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 16px;
+  position: relative;
+}
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--brand-wash);
+  color: var(--brand-deep);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+.step h4 { margin: 0 0 6px; font-size: 15px; }
+.step p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+
+/* screenshots */
+figure { margin: 0; }
+.shot img {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: block;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(18, 39, 80, .08);
+}
+figcaption { font-size: 13px; color: var(--ink-soft); margin-top: 10px; text-align: center; }
+
+/* mapping table */
+table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 15px; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: var(--brand-wash); color: var(--brand-deep); font-weight: 600; white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+td code, p code, li code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: #eef1f6;
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+/* evidence */
+.evidence { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.evidence li {
+  background: var(--ok-wash);
+  border: 1px solid #bfe6d2;
+  border-radius: 10px;
+  padding: 14px 16px 14px 46px;
+  position: relative;
+  font-size: 15px;
+}
+.evidence li::before {
+  content: "✓";
+  position: absolute; left: 16px; top: 12px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #fff;
+  font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+}
+.evidence li b { display: block; margin-bottom: 2px; }
+
+/* notice */
+.notice {
+  background: #fffbe8;
+  border: 1px solid #f0dfa0;
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 14px;
+  color: #6b5a12;
+}
+
+/* buttons */
+.btn {
+  display: inline-block;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 10px;
+  padding: 12px 26px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.btn:hover { background: var(--brand-deep); text-decoration: none; }
+.btn.ghost {
+  background: transparent;
+  color: var(--brand-deep);
+  border: 1px solid var(--brand);
+}
+.btn.ghost:hover { background: var(--brand-wash); }
+
+/* footer */
+footer {
+  margin-top: 72px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  padding: 28px 0 40px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; }
+
+@media (max-width: 640px) {
+  h1 { font-size: 30px; }
+  header { padding: 40px 0 44px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="kicker">Qoder × OceanBase · Build with Qoder 参赛作品</span>
+    <h1>课题续研台</h1>
+    <p class="tagline">面向学生与科研人员的课题管理工具。笔记、来源证据与交接状态全部持久化在 PowerContext —— 关掉浏览器、重启应用，隔一周回来，课题上下文原样在。</p>
+    <div class="header-meta">
+      <span class="chip">FastAPI + 原生 JS 前端</span>
+      <span class="chip">PowerContext 负责全部持久化</span>
+      <span class="chip">应用本身零状态</span>
+      <span class="chip">无需任何 API Key</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section id="problem">
+  <div class="rule"></div>
+  <h2>解决的问题</h2>
+  <p class="sub">课程项目、毕业设计、小组调研——课题不是一次做完的。真正的痛点不是“记不下来”，而是“回来时上下文已经散了”。</p>
+  <div class="grid g2">
+    <div class="card pain">
+      <h3>续研时的日常</h3>
+      <p>结论记在聊天记录里，参考文献链接三天后失效，上次想到一半的问题没有地方放，交接只能靠口头或长截图。换台电脑、换个会话，一切从“我还做到哪了”开始。</p>
+    </div>
+    <div class="card cure">
+      <h3>课题续研台的回答</h3>
+      <p>一个课题一个空间：带来源的笔记、结论 / 事实 / 问题 / 进展分类、结构化交接状态，全部写入 PowerContext。任何时候回来，读回全部记录，还能按关键词检索历史。</p>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="rule"></div>
+  <h2>核心功能</h2>
+  <p class="sub">从新建课题到续研的完整闭环，每一步都落在 PowerContext 里。</p>
+  <div class="flow">
+    <div class="step"><h4>新建课题</h4><p>课题即 PowerContext scope，是数据分区也是身份</p></div>
+    <div class="step"><h4>记录带来源的笔记</h4><p>结论 / 事实 / 问题 / 进展四类，引用来源经 <code>/v1/sources/content</code> 采集落盘</p></div>
+    <div class="step"><h4>整理交接状态</h4><p>目标、已完成、关键证据、待解决问题、下一步，一键存为交接记录</p></div>
+    <div class="step"><h4>关闭会话</h4><p>直接关掉应用即可，应用无任何本地状态</p></div>
+    <div class="step"><h4>重新打开</h4><p>课题列表、笔记、来源、交接全部从 PowerContext 读回</p></div>
+    <div class="step"><h4>检索与续研包</h4><p>关键词混合检索历史记录；续研包按相关性汇总当前证据</p></div>
+  </div>
+</section>
+
+<section id="screenshots">
+  <div class="rule"></div>
+  <h2>界面截图</h2>
+  <p class="sub">以下均为本地真实运行截图（数据由 PowerContext 真实读写，非演示假数据）。</p>
+  <div class="grid g2">
+    <figure class="shot">
+      <img src="screenshots/01-topic-list.png" alt="课题列表页：课题卡片网格，PowerContext 状态指示，一键载入示例课题" loading="lazy" />
+      <figcaption>课题列表：状态一目了然，可一键载入示例课题体验完整流程</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="screenshots/03-demo-topic.png" alt="示例课题详情：四类笔记与交接记录读回" loading="lazy" />
+      <figcaption>课题详情（示例课题）：带来源的事实、结论、问题、进展与交接记录</figcaption>
+    </figure>
+  </div>
+  <div style="margin-top: 20px;">
+    <figure class="shot">
+      <img src="screenshots/02-topic-detail.png" alt="课题详情页：笔记、来源引用、续研包与检索结果" loading="lazy" />
+      <figcaption>真实课题详情：带来源引用的笔记、续研包（context/prepare 生成）与关键词检索结果</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="powercontext">
+  <div class="rule"></div>
+  <h2>PowerContext 在项目中的作用</h2>
+  <p class="sub">课题续研台本身不保存任何数据 —— 所有读写都走 PowerContext HTTP API。领域模型与 PowerContext 概念一一对应。</p>
+  <table>
+    <thead>
+      <tr><th>应用概念</th><th>PowerContext 能力</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>课题</td><td><code>scope</code></td><td>课题 = 数据分区与身份，用 external_references 标记归属</td></tr>
+      <tr><td>笔记 / 结论 / 问题 / 进展</td><td><code>memory remember</code></td><td>显式记忆写入，分类为 decision / fact / question / working_note</td></tr>
+      <tr><td>来源证据</td><td><code>sources content</code></td><td>文献摘录等原文经 PowerContext 采集，与笔记关联</td></tr>
+      <tr><td>交接状态</td><td><code>memory remember（handoff）</code></td><td>结构化交接整理为一条可检索的记忆</td></tr>
+      <tr><td>续研包</td><td><code>context prepare</code></td><td>按 query 相关性选取证据，生成有界的续研上下文</td></tr>
+      <tr><td>检索</td><td><code>memory search</code></td><td>跨全部笔记的关键词检索，带相关性得分</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:36px;">真实读写证据（非模拟）</h3>
+  <ul class="evidence">
+    <li><b>跨会话持久化端到端测试</b>测试启动真实 PowerContext Server 子进程（独立数据目录），会话 A 写入课题、带来源笔记与交接 → 重启应用 → 会话 B 全部读回、检索命中、续研包就绪。10 个测试全部通过。</li>
+    <li><b>来源真实落盘核对</b>测试直接调用 <code>GET /v1/scopes/{id}/sources</code>，确认文献摘录确实存于 PowerContext，而非只挂在笔记文本里。</li>
+    <li><b>浏览器人工验证</b>本地真实服务上完成“新建课题 → 记录带来源笔记 → 保存交接 → 重启应用进程 → 重新打开课题数据完整读回 → 检索命中”的完整闭环。</li>
+    <li><b>服务不可用行为明确</b>PowerContext 未启动时，接口返回 503 与启动指引，界面显示“PowerContext 不可用”，绝不伪装成功。</li>
+  </ul>
+</section>
+
+<section id="run">
+  <div class="rule"></div>
+  <h2>本地运行</h2>
+  <p class="sub">无需任何 API Key，两条命令即可跑起来。</p>
+  <div class="card">
+    <h3>快速开始</h3>
+    <p>1. 启动 PowerContext Server：<code>uv run powercontext server run --port 8010</code></p>
+    <p>2. 启动应用：<code>POWERCONTEXT_URL=http://127.0.0.1:8010 uv run uvicorn app.main:app --port 8020</code></p>
+    <p>3. 打开 <code>http://127.0.0.1:8020</code>，点击「一键载入示例课题」即可体验完整流程。</p>
+    <p style="margin-top:12px;">完整运行说明（环境要求、依赖版本、验证样例、故障排查、数据清理）见仓库中的 <code>qoder/topic-desk/README.md</code>。</p>
+  </div>
+</section>
+
+<section id="repo">
+  <div class="rule"></div>
+  <h2>代码仓库</h2>
+  <div class="card">
+    <p>仓库地址：<code>https://github.com/&lt;待填写&gt;</code>（提交前更新为最终地址）</p>
+    <p style="margin-top:8px;">项目位于仓库 <code>qoder/topic-desk/</code> 目录，基于 <code>2026-competition-ecosystem</code> 分支开发。</p>
+  </div>
+  <div class="notice" style="margin-top:20px;">
+    使用效果说明：项目当前处于开发自用阶段，尚未交予外部真实用户长期使用，因此本页不展示使用人数、提效对比等数据。项目已内置使用效果收集模板，获得真实数据后将在本页如实补充。
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>课题续研台 · Qoder × OceanBase 参赛作品</span>
+    <span>开发工具：Qoder · 持久化：PowerContext</span>
+  </div>
+</footer>
+
+</body>
+</html>

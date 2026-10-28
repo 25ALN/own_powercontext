@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+topic-desk-data/
+app.log
+server.log
+site/dist/
+site/dist-compressed/

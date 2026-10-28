@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>课题续研台 · TopicDesk</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>课题续研台</h1>
+    <p class="tagline">跨会话保存研究进展，下次打开直接续研</p>
+  </div>
+  <div id="pc-status" class="pc-status checking"><span class="dot"></span><span id="pc-status-text">正在连接 PowerContext…</span></div>
+</header>
+
+<div id="global-error" class="banner error hidden"></div>
+
+<main>
+  <!-- 课题列表视图 -->
+  <section id="view-topics">
+    <div class="toolbar">
+      <button id="btn-seed" class="secondary">载入示例课题</button>
+    </div>
+    <div id="topic-list" class="topic-grid"></div>
+
+    <details class="create-box">
+      <summary>＋ 新建课题</summary>
+      <form id="form-create" class="stack">
+        <input id="create-title" placeholder="课题名称，例如：毕业论文文献调研" maxlength="120" required>
+        <textarea id="create-summary" placeholder="一句话描述课题目标" maxlength="500" required></textarea>
+        <button type="submit">创建课题</button>
+      </form>
+    </details>
+  </section>
+
+  <!-- 课题详情视图 -->
+  <section id="view-topic" class="hidden">
+    <button id="btn-back" class="ghost">← 返回课题列表</button>
+    <div id="topic-head">
+      <h2 id="topic-title"></h2>
+      <p id="topic-summary"></p>
+      <p class="scope-line">PowerContext scope：<code id="topic-scope"></code></p>
+    </div>
+
+    <div class="layout">
+      <div class="column main-col">
+        <div class="card">
+          <h3>研究记录</h3>
+          <form id="form-note" class="stack">
+            <div class="row">
+              <select id="note-kind">
+                <option value="conclusion">结论</option>
+                <option value="fact">事实</option>
+                <option value="question">问题</option>
+                <option value="progress" selected>进展</option>
+              </select>
+              <input id="note-text" placeholder="记录一条结论 / 事实 / 问题 / 进展…" maxlength="4000" required>
+            </div>
+            <details class="source-box">
+              <summary>附加来源（可选）</summary>
+              <input id="source-title" placeholder="来源标题，如论文名/网页标题" maxlength="200">
+              <input id="source-url" placeholder="来源链接（可选）" maxlength="500">
+              <textarea id="source-excerpt" placeholder="来源摘录或原文片段（将作为证据存入 PowerContext）" maxlength="5000"></textarea>
+            </details>
+            <button type="submit">保存到 PowerContext</button>
+          </form>
+          <div id="note-list"></div>
+        </div>
+      </div>
+
+      <div class="column side-col">
+        <div class="card">
+          <h3>续研包 <span class="hint">从 PowerContext 读回</span></h3>
+          <p class="desc">结束会话后再打开课题，这里展示 PowerContext 为你准备的历史上下文。</p>
+          <button id="btn-context" class="secondary">读取续研包</button>
+          <pre id="context-out" class="output hidden"></pre>
+        </div>
+
+        <div class="card">
+          <h3>会话交接</h3>
+          <form id="form-handoff" class="stack">
+            <input id="ho-goal" placeholder="当前目标" maxlength="500" required>
+            <textarea id="ho-done" placeholder="已完成事项，每行一条" rows="2"></textarea>
+            <textarea id="ho-evidence" placeholder="关键证据/来源，每行一条" rows="2"></textarea>
+            <textarea id="ho-questions" placeholder="待解决问题，每行一条" rows="2"></textarea>
+            <textarea id="ho-next" placeholder="下一步，每行一条" rows="2"></textarea>
+            <button type="submit">整理并保存交接状态</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>检索</h3>
+          <form id="form-search" class="row">
+            <input id="search-q" placeholder="关键词，如 BM25" required>
+            <button type="submit">搜索</button>
+          </form>
+          <div id="search-out"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>课题续研台 · 数据由 <a href="https://github.com/oceanbase/powercontext" target="_blank" rel="noopener">PowerContext</a> 持久化保存 · 参赛项目演示</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
