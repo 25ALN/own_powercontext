@@ -15,7 +15,7 @@
 
 - ⬜ 最终仓库地址（需在测试平台提交前填写；评审需可访问）
 - 项目代码位置：`qoder/topic-desk/`（基于 `2026-competition-ecosystem` 分支开发）
-- ⬜ 代码尚未提交到分支——提交前请与开发者确认后执行 git commit
+- ✅ 代码已提交到分支：commit `75a18c0c`（feat(qoder): add topic-desk project，18 个文件）
 
 ## 3. 运行说明
 
