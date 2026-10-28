@@ -37,6 +37,10 @@ if TYPE_CHECKING:
 
 PDF_PAGE_SOURCE_NAME = "pdf-page"
 _TOKEN_PATTERN = re.compile(r"[a-z]+|\d+", re.IGNORECASE)
+_GENERIC_ANSWER_INSTRUCTION = re.compile(
+    r"\bif\b.*?\b(?:please\s+)?(?:state|say)\s+(?:that\s+)?and\s+explain\s+why\b.*$",
+    re.IGNORECASE | re.DOTALL,
+)
 _QUERY_STOP_WORDS = frozenset([
     "a",
     "an",
@@ -120,15 +124,86 @@ _QUERY_STOP_WORDS = frozenset([
 _QUERY_TERM_ALIASES = {
     "battle": ("legal proceedings", "litigation", "lawsuit"),
     "capex": ("capital expenditures", "capital spending"),
-    "geography": ("geographies", "geographic regions", "reportable segments", "operations", "regions"),
+    "cyclicality": ("cyclical", "seasonality", "economic cycles"),
+    "liquidity": ("liquidity risk", "current assets", "current liabilities"),
+    "growth": ("sales change", "organic sales", "revenue growth", "net sales"),
+    "customer": (
+        "major customers",
+        "customer base",
+        "customer concentration",
+        "revenue concentration",
+        "limited number of customers",
+        "significant portion of revenue",
+        "substantial portion of revenue",
+    ),
+    "geography": (
+        "geographic regions",
+        "geographic operations",
+        "geographical areas",
+        "regions",
+        "countries",
+        "territories",
+        "international",
+        "reportable segments",
+        "operations",
+    ),
     "operate": ("operations", "operating"),
+    "retain": ("retention", "customer loyalty"),
 }
 _QUERY_PHRASE_ALIASES = {
-    ("operating", "income"): ("operating profit",),
+    ("capital", "intensive"): (
+        "capital expenditures",
+        "capital spending",
+        "property plant and equipment",
+        "depreciation and amortization",
+        "capital assets",
+    ),
+    ("customer", "concentration"): ("major customers", "customer accounted", "sales to customers"),
+    ("customer", "retention"): ("customer loyalty",),
+    ("dragged", "down"): ("sales change", "organic sales", "negative growth", "sales declined"),
+    ("effective", "tax"): ("income tax", "tax provision"),
+    ("gross", "margin"): (
+        "gross profit",
+        "gross income",
+        "statement of income",
+        "statements of income",
+        "statement of operations",
+    ),
+    ("healthy", "quick"): ("current assets", "current liabilities"),
+    ("largest", "liability"): ("total liabilities", "accounts payable", "long term debt"),
+    ("operating", "margin"): (
+        "operating profit",
+        "operating income",
+        "income from operations",
+        "statement of income",
+        "statements of income",
+        "statement of operations",
+    ),
+    ("operating", "income"): ("operating profit", "income from operations"),
+    ("primary", "customer"): (
+        "major customers",
+        "customer concentration",
+        "revenue concentration",
+        "limited number of customers",
+        "significant portion of revenue",
+        "substantial portion of revenue",
+    ),
+    ("product", "category"): ("business segment", "segment revenues"),
+    ("quick", "ratio"): (
+        "current assets",
+        "current liabilities",
+        "cash and cash equivalents",
+        "short term investments",
+        "accounts receivable",
+    ),
+    ("cash", "flow"): ("cash flows", "statement of cash flows"),
 }
-_QUERY_VARIANTS = 12
-_CANDIDATE_MULTIPLIER = 8
-_MAX_SEARCH_CANDIDATES = 160
+_DOCUMENT_ID_ALIASES = {
+    "amex": "americanexpress",
+}
+_QUERY_VARIANTS = 24
+_CANDIDATE_MULTIPLIER = 12
+_MAX_SEARCH_CANDIDATES = 320
 
 
 class _PDFPasswordRequiredError(Exception):
@@ -331,7 +406,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
 
 
 class _RankedCitation:
-    __slots__ = ("citation", "lexical", "phrase", "rrf", "text")
+    __slots__ = ("alias_match", "citation", "document_match", "lexical", "phrase", "rrf", "text")
 
     def __init__(self, *, citation: MemoryCitation, text: str) -> None:
         self.citation = citation
@@ -339,6 +414,8 @@ class _RankedCitation:
         self.rrf = 0.0
         self.lexical = 0.0
         self.phrase = 0.0
+        self.alias_match = 0
+        self.document_match = False
 
     def add(self, rank: int, _question: str) -> None:
         self.rrf = max(self.rrf, 1 / (60 + rank))
@@ -350,6 +427,7 @@ class _RankedCitation:
         page_terms: Counter[str],
         searchable_text: str,
     ) -> None:
+        self.document_match = _question_matches_document(query_terms, self.text)
         if query_terms:
             total_weight = sum(term_weights.values())
             matched_weight = sum(
@@ -373,11 +451,22 @@ class _RankedCitation:
             ):
                 longest_run = 4
             self.phrase = max(self.phrase, longest_run / 4)
+            self.alias_match = sum(
+                _normalized_alias_present(alias, page_terms, searchable_text)
+                for term in query_terms
+                for alias in _QUERY_TERM_ALIASES.get(term, ())
+            ) + sum(
+                _normalized_alias_present(alias, page_terms, searchable_text)
+                for index in range(len(query_terms) - 1)
+                for alias in _QUERY_PHRASE_ALIASES.get((query_terms[index], query_terms[index + 1]), ())
+            )
 
     @property
-    def sort_key(self) -> tuple[float, float, float, str, str]:
+    def sort_key(self) -> tuple[float, float, float, float, str, str]:
         score = self.rrf + self.lexical * 0.2 + self.phrase * 0.05
-        return (-score, -self.lexical, -self.phrase, self.citation.entry_id, self.citation.entry_version_id)
+        score += 0.3 if self.document_match else 0.0
+        score += 0.07 * min(self.alias_match, 8)
+        return (-score, -self.lexical, -self.phrase, -self.rrf, self.citation.entry_id, self.citation.entry_version_id)
 
 
 def _page_evidence_text(text: str) -> str:
@@ -387,6 +476,30 @@ def _page_evidence_text(text: str) -> str:
     return page_text if separator else text
 
 
+def _question_matches_document(query_terms: tuple[str, ...], text: str) -> bool:
+    document_id, separator, _page_text = text.partition("\n")
+    if not separator:
+        return False
+    identity_source = re.sub(r"[_\s-]+(?:19|20)\d{2}(?:q[1-4])?(?:[_\s-]*10[kq])?$", "", document_id.casefold())
+    document_identity = "".join(_TOKEN_PATTERN.findall(identity_source))
+    if not document_identity:
+        document_tokens = _TOKEN_PATTERN.findall(document_id.casefold())
+        document_identity = "".join(
+            token for token in document_tokens if not token.isdigit() and token not in {"k", "q"}
+        )
+    if not document_identity:
+        return False
+    query_tokens = tuple(term for term in query_terms if term.isalnum() and not (term.isdigit() and len(term) == 4))
+    for start in range(len(query_tokens)):
+        for end in range(start + 1, len(query_tokens) + 1):
+            phrase = "".join(query_tokens[start:end])
+            if _DOCUMENT_ID_ALIASES.get(phrase, phrase) == document_identity:
+                return True
+            if len(phrase) >= 4 and phrase in document_identity:
+                return True
+    return False
+
+
 def _page_term_index(text: str) -> tuple[Counter[str], str]:
     page_text = _page_evidence_text(text)
     tokens = [_normalize_query_term(term) for term in _TOKEN_PATTERN.findall(page_text.casefold())]
@@ -394,9 +507,20 @@ def _page_term_index(text: str) -> tuple[Counter[str], str]:
 
 
 def _query_variants(question: str) -> tuple[str, ...]:
-    tokens = _TOKEN_PATTERN.findall(question.casefold())
+    search_question = _GENERIC_ANSWER_INSTRUCTION.sub("", question).strip()
+    tokens = _TOKEN_PATTERN.findall(search_question.casefold())
     terms = list(dict.fromkeys(term for term in tokens if term not in _QUERY_STOP_WORDS))
-    normalized_terms = list(dict.fromkeys(_normalize_query_term(term) for term in terms))
+    normalized_term_list: list[str] = []
+    index = 0
+    while index < len(terms):
+        term = terms[index]
+        if term == "fy" and index + 1 < len(terms) and re.fullmatch(r"\d{2}|\d{4}", terms[index + 1]):
+            normalized_term_list.append(_normalize_fiscal_year(terms[index + 1]))
+            index += 2
+            continue
+        normalized_term_list.append(_normalize_query_term(term))
+        index += 1
+    normalized_terms = list(dict.fromkeys(normalized_term_list))
     fixed = [" ".join(tokens)]
     if terms:
         fixed.append(" ".join(terms))
@@ -405,7 +529,7 @@ def _query_variants(question: str) -> tuple[str, ...]:
 
     original_windows = _query_windows(terms)
     windows = original_windows + _query_windows(normalized_terms)
-    anchors: list[str] = []
+    anchors: list[str] = [term for term in normalized_terms if term.isdigit() and len(term) == 4]
     anchors.extend(
         alias
         for index in range(len(normalized_terms) - 1)
@@ -448,12 +572,27 @@ def _query_variants(question: str) -> tuple[str, ...]:
 
 
 def _query_terms(question: str) -> Counter[str]:
-    terms = [
-        _normalize_query_term(term)
-        for term in _TOKEN_PATTERN.findall(question.casefold())
-        if term not in _QUERY_STOP_WORDS
-    ]
+    question = _GENERIC_ANSWER_INSTRUCTION.sub("", question)
+    raw_terms = _TOKEN_PATTERN.findall(question.casefold())
+    terms: list[str] = []
+    for index, term in enumerate(raw_terms):
+        if term in _QUERY_STOP_WORDS:
+            continue
+        if term.isdigit() and index > 0 and raw_terms[index - 1] == "fy":
+            continue
+        normalized = _normalize_query_term(term)
+        if normalized == "fy" and index + 1 < len(raw_terms) and re.fullmatch(r"\d{2}|\d{4}", raw_terms[index + 1]):
+            terms.append(_normalize_fiscal_year(raw_terms[index + 1]))
+            continue
+        terms.append(normalized)
     return Counter(terms)
+
+
+def _normalize_fiscal_year(year: str) -> str:
+    if len(year) == 4:
+        return year
+    value = int(year)
+    return f"20{value:02d}" if value < 80 else f"19{value:02d}"
 
 
 def _query_windows(terms: list[str]) -> list[str]:
@@ -493,6 +632,10 @@ def _normalize_query_term(term: str) -> str:
 def _query_term_present(term: str, page_terms: Counter[str], searchable_text: str) -> bool:
     if page_terms[term]:
         return True
+    return _query_term_alias_present(term, page_terms, searchable_text)
+
+
+def _query_term_alias_present(term: str, page_terms: Counter[str], searchable_text: str) -> bool:
     return any(
         _normalized_alias_present(alias, page_terms, searchable_text) for alias in _QUERY_TERM_ALIASES.get(term, ())
     )

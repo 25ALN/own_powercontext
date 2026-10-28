@@ -158,7 +158,7 @@ async def test_search_keeps_bounded_candidate_pool() -> None:
     await search_pdf_pages(Memory(), "What is FY2022 unadjusted EBITDA less capex?", limit=20)
 
     assert requests
-    assert all(request.limit == min(_MAX_SEARCH_CANDIDATES, 20 * 8) for request in requests)
+    assert all(request.limit == min(_MAX_SEARCH_CANDIDATES, 20 * 12) for request in requests)
 
 
 def test_search_does_not_score_document_identity_as_page_evidence() -> None:
@@ -185,6 +185,30 @@ def test_search_does_not_score_document_identity_as_page_evidence() -> None:
     assert [citation.entry_id for citation in citations] == ["entry-2", "entry-1"]
 
 
+def test_search_prefers_pages_with_multiple_specific_financial_aliases() -> None:
+    memory_ref = ArtifactRef(family="memory", artifact_id="main", revision=1)
+    broad_match = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-1",
+        entry_version_id="version-1",
+        text="PepsiCo_2022_10K\nPepsiCo operates in several regions.",
+    )
+    specific_match = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-2",
+        entry_version_id="version-2",
+        text="PepsiCo_2022_10K\nGeographic regions include countries and reportable segments.",
+    )
+
+    class Memory:
+        async def search(self, request, /):
+            return SimpleNamespace(hits=(broad_match, specific_match))
+
+    citations = asyncio.run(search_pdf_pages(Memory(), "What geographies does PepsiCo primarily operate in?", limit=2))
+
+    assert [citation.entry_id for citation in citations] == ["entry-2", "entry-1"]
+
+
 def test_query_variants_include_overlapping_content_windows() -> None:
     from powercontext.sources.pdf_pages import _query_variants
 
@@ -200,6 +224,36 @@ def test_query_variants_expand_financial_phrases() -> None:
     variants = _query_variants("What is unadjusted operating income for FY2022?")
 
     assert "operating profit" in variants
+    assert "gross profit" in _query_variants("What is the gross margin trend?")
+    assert "current assets" in _query_variants("Does the company have a healthy quick ratio?")
+    assert "statement of income" in _query_variants("Does AMEX have an improving operating margin profile?")
+    assert "major customers" in _query_variants("Who are the primary customers of Boeing?")
+    assert "statement of income" in _query_variants("What drove gross margin change for American Express?")
+    assert "property plant and equipment" in _query_variants("Is 3M a capital-intensive business?")
+    assert "sales change" in _query_variants("Which segment dragged down overall growth?")
+    assert "geographic operations" in _query_variants("What geographies does American Express operate in?")
+    assert "substantial portion of revenue" in _query_variants("Who are the primary customers of a company?")
+
+
+def test_query_variants_normalize_two_digit_fiscal_years_for_search() -> None:
+    from powercontext.sources.pdf_pages import _query_variants
+
+    variants = _query_variants("Does AMD have a healthy quick ratio for FY22?")
+    full_year_variants = _query_variants("Did AMD report revenue in FY2022?")
+
+    assert "2022" in variants
+    assert "amd report revenue 2022" in full_year_variants
+
+
+def test_query_terms_drop_generic_metric_explanation_instruction() -> None:
+    from powercontext.sources.pdf_pages import _query_terms
+
+    terms = _query_terms(
+        "Does AMD have a healthy quick ratio? If the quick ratio is not relevant to measure liquidity, "
+        "please state that and explain why."
+    )
+
+    assert terms == {"amd": 1, "healthy": 1, "quick": 1, "ratio": 1}
 
 
 def test_financial_phrase_alias_counts_as_phrase_evidence() -> None:
@@ -253,6 +307,13 @@ def test_query_terms_ignore_common_filler_and_initials() -> None:
     assert calculation_terms == {"unadjusted": 1, "ebitda": 1, "less": 1, "capex": 1}
 
 
+def test_query_terms_normalize_two_digit_fiscal_years() -> None:
+    from powercontext.sources.pdf_pages import _query_terms
+
+    assert _query_terms("Did AMD report revenue in FY22?") == {"amd": 1, "report": 1, "revenue": 1, "2022": 1}
+    assert _query_terms("Did AMD report revenue in FY2022?") == {"amd": 1, "report": 1, "revenue": 1, "2022": 1}
+
+
 def test_query_terms_remove_answer_instructions_and_normalize_inflections() -> None:
     from powercontext.sources.pdf_pages import _normalize_query_term, _query_terms, _query_variants
 
@@ -282,6 +343,18 @@ def test_query_aliases_use_the_same_normalization_as_page_text() -> None:
 
     assert _query_term_present("geography", terms, searchable_text)
     assert _query_term_present("operate", terms, searchable_text)
+
+    customer_terms, customer_text = _page_term_index("Customer loyalty and retention remained high.")
+    assert _query_term_present("retain", customer_terms, customer_text)
+
+
+def test_document_match_normalizes_common_company_abbreviation() -> None:
+    from powercontext.sources.pdf_pages import _question_matches_document
+
+    assert _question_matches_document(("amex", "revenue"), "AMERICANEXPRESS_2022_10K\nRevenue rose")
+    assert _question_matches_document(("amd", "revenue"), "AMD_2022_10K\nRevenue rose")
+    assert _question_matches_document(("3", "m", "revenue"), "3M_2022_10K\nRevenue rose")
+    assert _question_matches_document(("3", "m", "revenue", "2023"), "3M_2023Q2_10Q\nRevenue rose")
 
 
 def test_query_variant_rank_does_not_reduce_equal_rank_rrf_contribution() -> None:
