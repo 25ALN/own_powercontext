@@ -97,10 +97,14 @@ async def test_page_source_projection_has_only_contract_metadata() -> None:
     }
 
 
-@pytest.mark.parametrize("limit", [0, -1, True, 1.5])
+@pytest.mark.parametrize("limit", [-1, True, 1.5])
 async def test_search_rejects_invalid_limit(limit) -> None:
     with pytest.raises(ValueError, match="limit"):
         await search_pdf_pages(object(), "revenue", limit=limit)
+
+
+async def test_search_with_zero_limit_returns_no_citations() -> None:
+    assert await search_pdf_pages(object(), "revenue", limit=0) == ()
 
 
 async def test_search_rejects_blank_question() -> None:

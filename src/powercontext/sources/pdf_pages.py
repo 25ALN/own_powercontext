@@ -277,10 +277,12 @@ def pdf_page_source_id(document_id: str, document_sha256: str, page_number: int)
 async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[MemoryCitation, ...]:
     """Search persisted page evidence and return distinct exact Memory citations."""
 
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-        raise ValueError("limit must be a positive integer")  # noqa: TRY003
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+        raise ValueError("limit must be a non-negative integer")  # noqa: TRY003
     if not isinstance(question, str) or not question.strip():
         raise ValueError("question must be non-empty text")  # noqa: TRY003
+    if limit == 0:
+        return ()
 
     from powercontext.artifacts import MemoryCitation
     from powercontext.builtin.runtime import SearchMemoryRequest
