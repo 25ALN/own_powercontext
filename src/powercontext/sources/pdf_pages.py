@@ -19,8 +19,10 @@ from __future__ import annotations
 import hashlib
 import importlib
 import io
+import math
 import re
 from collections import Counter
+from itertools import pairwise
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, model_validator
@@ -38,15 +40,19 @@ _TOKEN_PATTERN = re.compile(r"[a-z]+|\d+", re.IGNORECASE)
 _QUERY_STOP_WORDS = frozenset([
     "a",
     "an",
+    "analyst",
     "and",
     "any",
     "are",
     "as",
+    "assuming",
     "at",
+    "answer",
     "be",
     "been",
     "by",
     "can",
+    "calculate",
     "d",
     "define",
     "did",
@@ -59,21 +65,30 @@ _QUERY_STOP_WORDS = frozenset([
     "have",
     "how",
     "if",
+    "important",
     "in",
     "into",
     "is",
     "it",
     "its",
     "l",
+    "million",
+    "millions",
     "not",
     "of",
     "on",
     "or",
     "p",
+    "perspective",
     "primarily",
     "reported",
+    "respond",
+    "response",
+    "relying",
+    "question",
     "s",
     "should",
+    "shown",
     "state",
     "that",
     "the",
@@ -84,6 +99,7 @@ _QUERY_STOP_WORDS = frozenset([
     "there",
     "to",
     "use",
+    "using",
     "what",
     "when",
     "where",
@@ -91,7 +107,20 @@ _QUERY_STOP_WORDS = frozenset([
     "who",
     "with",
     "within",
+    "only",
+    "details",
+    "investment",
+    "ongoing",
+    "quantity",
+    "directly",
+    "outlined",
+    "explicitly",
+    "usd",
 ])
+_QUERY_TERM_ALIASES = {
+    "battle": ("legal proceedings", "litigation", "lawsuit"),
+    "capex": ("capital expenditures", "capital spending"),
+}
 _QUERY_VARIANTS = 12
 _CANDIDATE_MULTIPLIER = 8
 
@@ -275,6 +304,20 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
                 candidates[key] = item
             item.add(rank, question)
 
+    query_terms = tuple(_query_terms(question))
+    prepared = [(item, *_page_term_index(item.text)) for item in candidates.values()]
+    document_frequency = Counter(
+        term
+        for _item, page_terms, searchable_text in prepared
+        for term in query_terms
+        if _query_term_present(term, page_terms, searchable_text)
+    )
+    term_weights = {
+        term: max(0.1, math.log((len(candidates) + 1) / (document_frequency[term] + 1))) for term in query_terms
+    }
+    for item, page_terms, searchable_text in prepared:
+        item.score_relevance(query_terms, term_weights, page_terms, searchable_text)
+
     ranked = sorted(candidates.values(), key=lambda item: item.sort_key)
     return tuple(item.citation for item in ranked[:limit])
 
@@ -289,16 +332,22 @@ class _RankedCitation:
         self.lexical = 0.0
         self.phrase = 0.0
 
-    def add(self, rank: int, question: str) -> None:
+    def add(self, rank: int, _question: str) -> None:
         self.rrf += 1 / (60 + rank)
-        query_terms = tuple(_query_terms(question))
-        page_text = _page_evidence_text(self.text)
-        page_terms = Counter(_TOKEN_PATTERN.findall(page_text.casefold()))
+
+    def score_relevance(
+        self,
+        query_terms: tuple[str, ...],
+        term_weights: dict[str, float],
+        page_terms: Counter[str],
+        searchable_text: str,
+    ) -> None:
         if query_terms:
-            matched = tuple(term for term in query_terms if page_terms[term])
-            self.lexical = max(self.lexical, len(matched) / len(query_terms))
-            page_tokens = _TOKEN_PATTERN.findall(page_text.casefold())
-            searchable_text = f" {' '.join(page_tokens)} "
+            total_weight = sum(term_weights.values())
+            matched_weight = sum(
+                term_weights[term] for term in query_terms if _query_term_present(term, page_terms, searchable_text)
+            )
+            self.lexical = matched_weight / total_weight if total_weight else 0.0
             longest_run = max(
                 (
                     size
@@ -325,31 +374,109 @@ def _page_evidence_text(text: str) -> str:
     return page_text if separator else text
 
 
-def _query_variants(question: str) -> tuple[str, ...]:
-    variants = [" ".join(_TOKEN_PATTERN.findall(question.casefold()))]
-    terms = [term for term in _TOKEN_PATTERN.findall(question.casefold()) if term not in _QUERY_STOP_WORDS]
-    terms = list(dict.fromkeys(terms))
-    if terms:
-        variants.append(" ".join(terms))
-        if len(terms) > 4:
-            windows = [terms[index : index + 4] for index in range(0, len(terms) - 3, 3)]
-            if windows and windows[-1][-1] != terms[-1]:
-                windows.append(terms[-4:])
-            variants.extend(" ".join(window) for window in windows)
-    variants = list(dict.fromkeys(variant for variant in variants if variant))
-    if len(variants) <= _QUERY_VARIANTS:
-        return tuple(variants)
+def _page_term_index(text: str) -> tuple[Counter[str], str]:
+    page_text = _page_evidence_text(text)
+    tokens = [_normalize_query_term(term) for term in _TOKEN_PATTERN.findall(page_text.casefold())]
+    return Counter(tokens), f" {' '.join(tokens)} "
 
-    fixed = variants[:2]
-    windows = variants[2:]
+
+def _query_variants(question: str) -> tuple[str, ...]:
+    tokens = _TOKEN_PATTERN.findall(question.casefold())
+    terms = list(dict.fromkeys(term for term in tokens if term not in _QUERY_STOP_WORDS))
+    normalized_terms = list(dict.fromkeys(_normalize_query_term(term) for term in terms))
+    fixed = [" ".join(tokens)]
+    if terms:
+        fixed.append(" ".join(terms))
+    if normalized_terms and normalized_terms != terms:
+        fixed.append(" ".join(normalized_terms))
+
+    original_windows = _query_windows(terms)
+    windows = original_windows + _query_windows(normalized_terms)
+    anchors: list[str] = []
+    for term in terms:
+        normalized = _normalize_query_term(term)
+        aliases = _QUERY_TERM_ALIASES.get(normalized, ())
+        anchors.extend(aliases)
+    phrase_anchors = [
+        (left, right)
+        for left, right in pairwise(normalized_terms)
+        if left.isalpha() and right.isalpha() and len(left) >= 4 and len(right) >= 4
+    ]
+    phrase_anchors.sort(key=lambda pair: len(pair[0]) + len(pair[1]), reverse=True)
+    anchors.extend(" ".join(pair) for pair in phrase_anchors)
+    anchors.extend(
+        normalized for term in terms if (normalized := _normalize_query_term(term)) != term or len(normalized) >= 7
+    )
+
+    fixed = list(dict.fromkeys(variant for variant in fixed if variant))
+    anchors = list(dict.fromkeys(anchor for anchor in anchors if anchor))
+    windows = list(dict.fromkeys(window for window in windows if window))
     slots = _QUERY_VARIANTS - len(fixed)
-    selected = tuple(windows[index * (len(windows) - 1) // (slots - 1)] for index in range(slots))
-    return (*fixed, *selected)
+    if slots <= 0:
+        return tuple(fixed[:_QUERY_VARIANTS])
+
+    anchor_slots = min(len(anchors), max(1, slots // 2))
+    selected_anchors = anchors[:anchor_slots]
+    window_slots = slots - len(selected_anchors)
+    selected_windows = _sample_queries(windows, window_slots)
+    if original_windows and original_windows[-1] not in selected_windows:
+        if selected_windows:
+            selected_windows[-1] = original_windows[-1]
+        else:
+            selected_anchors.append(original_windows[-1])
+    if len(selected_windows) < window_slots:
+        selected_anchors.extend(anchors[anchor_slots : anchor_slots + window_slots - len(selected_windows)])
+    return (*fixed, *selected_anchors, *selected_windows)
 
 
 def _query_terms(question: str) -> Counter[str]:
-    terms = [term for term in _TOKEN_PATTERN.findall(question.casefold()) if term not in _QUERY_STOP_WORDS]
+    terms = [
+        _normalize_query_term(term)
+        for term in _TOKEN_PATTERN.findall(question.casefold())
+        if term not in _QUERY_STOP_WORDS
+    ]
     return Counter(terms)
+
+
+def _query_windows(terms: list[str]) -> list[str]:
+    if len(terms) <= 4:
+        return []
+    windows = [terms[index : index + 4] for index in range(0, len(terms) - 3, 3)]
+    if windows and windows[-1][-1] != terms[-1]:
+        windows.append(terms[-4:])
+    return [" ".join(window) for window in windows]
+
+
+def _sample_queries(queries: list[str], limit: int) -> list[str]:
+    if limit <= 0 or not queries:
+        return []
+    if len(queries) <= limit:
+        return queries
+    if limit == 1:
+        return [queries[len(queries) // 2]]
+    return [queries[index * (len(queries) - 1) // (limit - 1)] for index in range(limit)]
+
+
+def _normalize_query_term(term: str) -> str:
+    if term.endswith("ally") and len(term) > 6:
+        term = term[:-2]
+    if term.endswith("ies") and term not in {"series", "species"} and len(term) > 4:
+        return f"{term[:-3]}y"
+    if (
+        term.endswith("s")
+        and term not in {"news", "series", "species"}
+        and not term.endswith(("ss", "us", "is"))
+        and len(term) > 3
+    ):
+        return term[:-1]
+    return term
+
+
+def _query_term_present(term: str, page_terms: Counter[str], searchable_text: str) -> bool:
+    if page_terms[term]:
+        return True
+    aliases = _QUERY_TERM_ALIASES.get(term, ())
+    return any(alias in page_terms if " " not in alias else f" {alias} " in searchable_text for alias in aliases)
 
 
 def _validate_document_id(document_id: str) -> None:

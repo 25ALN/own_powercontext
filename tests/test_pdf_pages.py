@@ -190,8 +190,30 @@ def test_query_terms_ignore_common_filler_and_initials() -> None:
     terms = _query_terms("Are there any legal battles? If not, PepsiCo's D&A and P&L")
     calculation_terms = _query_terms("unadjusted EBITDA less capex")
 
-    assert terms == {"legal": 1, "battles": 1, "pepsico": 1}
+    assert terms == {"legal": 1, "battle": 1, "pepsico": 1}
     assert calculation_terms == {"unadjusted": 1, "ebitda": 1, "less": 1, "capex": 1}
+
+
+def test_query_terms_remove_answer_instructions_and_normalize_inflections() -> None:
+    from powercontext.sources.pdf_pages import _normalize_query_term, _query_terms, _query_variants
+
+    terms = _query_terms(
+        "Has PepsiCo reported materially important ongoing legal battles? "
+        "Respond as an investment analyst and answer in USD millions."
+    )
+
+    assert terms == {"pepsico": 1, "material": 1, "legal": 1, "battle": 1}
+    assert [_normalize_query_term(term) for term in ("family", "series", "geographies", "costs")] == [
+        "family",
+        "series",
+        "geography",
+        "cost",
+    ]
+    assert "legal proceedings" in _query_variants("Has PepsiCo reported materially important ongoing legal battles?")
+    assert (
+        "investment"
+        not in _query_variants("What is FY2022 EBITDA? Respond as an investment analyst using USD millions.")[1]
+    )
 
 
 def test_query_variant_rank_does_not_reduce_equal_rank_rrf_contribution() -> None:
