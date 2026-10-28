@@ -120,6 +120,11 @@ _QUERY_STOP_WORDS = frozenset([
 _QUERY_TERM_ALIASES = {
     "battle": ("legal proceedings", "litigation", "lawsuit"),
     "capex": ("capital expenditures", "capital spending"),
+    "geography": ("geographies", "geographic regions", "reportable segments", "operations", "regions"),
+    "operate": ("operations", "operating"),
+}
+_QUERY_PHRASE_ALIASES = {
+    ("operating", "income"): ("operating profit",),
 }
 _QUERY_VARIANTS = 12
 _CANDIDATE_MULTIPLIER = 8
@@ -360,6 +365,11 @@ class _RankedCitation:
                 ),
                 default=0,
             )
+            if any(
+                _query_phrase_present((query_terms[index], query_terms[index + 1]), searchable_text)
+                for index in range(len(query_terms) - 1)
+            ):
+                longest_run = 4
             self.phrase = max(self.phrase, longest_run / 4)
 
     @property
@@ -394,6 +404,11 @@ def _query_variants(question: str) -> tuple[str, ...]:
     original_windows = _query_windows(terms)
     windows = original_windows + _query_windows(normalized_terms)
     anchors: list[str] = []
+    anchors.extend(
+        alias
+        for index in range(len(normalized_terms) - 1)
+        for alias in _QUERY_PHRASE_ALIASES.get(tuple(normalized_terms[index : index + 2]), ())
+    )
     for term in terms:
         normalized = _normalize_query_term(term)
         aliases = _QUERY_TERM_ALIASES.get(normalized, ())
@@ -476,8 +491,27 @@ def _normalize_query_term(term: str) -> str:
 def _query_term_present(term: str, page_terms: Counter[str], searchable_text: str) -> bool:
     if page_terms[term]:
         return True
-    aliases = _QUERY_TERM_ALIASES.get(term, ())
-    return any(alias in page_terms if " " not in alias else f" {alias} " in searchable_text for alias in aliases)
+    return any(
+        _normalized_alias_present(alias, page_terms, searchable_text) for alias in _QUERY_TERM_ALIASES.get(term, ())
+    )
+
+
+def _query_phrase_present(phrase: tuple[str, ...], searchable_text: str) -> bool:
+    aliases = _QUERY_PHRASE_ALIASES.get(phrase, ())
+    if not aliases:
+        return False
+    return any(
+        f" {' '.join(_normalize_query_term(token) for token in _TOKEN_PATTERN.findall(alias.casefold()))} "
+        in searchable_text
+        for alias in aliases
+    )
+
+
+def _normalized_alias_present(alias: str, page_terms: Counter[str], searchable_text: str) -> bool:
+    alias_terms = tuple(_normalize_query_term(token) for token in _TOKEN_PATTERN.findall(alias.casefold()))
+    if len(alias_terms) == 1:
+        return page_terms[alias_terms[0]] > 0
+    return f" {' '.join(alias_terms)} " in searchable_text
 
 
 def _validate_document_id(document_id: str) -> None:

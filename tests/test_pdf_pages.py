@@ -190,6 +190,27 @@ def test_query_variants_include_overlapping_content_windows() -> None:
     assert any("pepsico annual report" in variant for variant in variants)
 
 
+def test_query_variants_expand_financial_phrases() -> None:
+    from powercontext.sources.pdf_pages import _query_variants
+
+    variants = _query_variants("What is unadjusted operating income for FY2022?")
+
+    assert "operating profit" in variants
+
+
+def test_financial_phrase_alias_counts_as_phrase_evidence() -> None:
+    from powercontext.sources.pdf_pages import _page_term_index, _query_terms, _RankedCitation
+
+    query_terms = tuple(_query_terms("unadjusted operating income for FY2022"))
+    page_terms, searchable_text = _page_term_index("Consolidated Statement of Income. Operating Profit 11,512")
+    citation = SimpleNamespace(memory_ref=None, entry_id="entry", entry_version_id="version")
+    ranked = _RankedCitation(citation=citation, text="report")
+
+    ranked.score_relevance(query_terms, dict.fromkeys(query_terms, 1.0), page_terms, searchable_text)
+
+    assert ranked.phrase == 1.0
+
+
 def test_query_variants_keep_windows_from_the_end_of_long_questions() -> None:
     from powercontext.sources.pdf_pages import _QUERY_VARIANTS, _query_variants
 
@@ -248,6 +269,15 @@ def test_query_terms_remove_answer_instructions_and_normalize_inflections() -> N
         "investment"
         not in _query_variants("What is FY2022 EBITDA? Respond as an investment analyst using USD millions.")[1]
     )
+
+
+def test_query_aliases_use_the_same_normalization_as_page_text() -> None:
+    from powercontext.sources.pdf_pages import _page_term_index, _query_term_present
+
+    terms, searchable_text = _page_term_index("This report describes regional operations and reportable segments.")
+
+    assert _query_term_present("geography", terms, searchable_text)
+    assert _query_term_present("operate", terms, searchable_text)
 
 
 def test_query_variant_rank_does_not_reduce_equal_rank_rrf_contribution() -> None:
