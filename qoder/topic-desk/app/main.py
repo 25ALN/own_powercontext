@@ -145,11 +145,13 @@ async def create_topic(request: Request, body: TopicCreate) -> dict[str, Any]:
 
 
 @app.get("/api/topics/{scope_id}")
-async def topic_detail(request: Request, scope_id: str) -> dict[str, Any]:
+async def topic_detail(request: Request, scope_id: str, kind: str | None = None) -> dict[str, Any]:
     client = get_client(request)
     scope = await client.get_scope(scope_id)
     entries = await client.list_memory_entries(scope_id)
     notes = [_render_entry(entry) for entry in entries]
+    if kind is not None:
+        notes = [note for note in notes if note["kind"] == kind]
     return {
         "topic": {
             "scope_id": scope.get("scope_id", scope_id),

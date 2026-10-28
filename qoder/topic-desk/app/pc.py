@@ -34,7 +34,7 @@ class PowerContextClient:
 
     def _new_client(self) -> httpx.AsyncClient:
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
-        return httpx.AsyncClient(base_url=self.base_url, headers=headers, timeout=15.0)
+        return httpx.AsyncClient(base_url=self.base_url, headers=headers, timeout=15.0, trust_env=False)
 
     async def aclose(self) -> None:
         return None

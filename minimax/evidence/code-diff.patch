@@ -1,0 +1,12 @@
+diff --git a/qoder/topic-desk/app/main.py b/qoder/topic-desk/app/main.py
+index 0c008e76..fbbffc56 100644
+--- a/qoder/topic-desk/app/main.py
++++ b/qoder/topic-desk/app/main.py
+@@ -149,5 +149,7 @@
+     client = get_client(request)
+     scope = await client.get_scope(scope_id)
+     entries = await client.list_memory_entries(scope_id)
+     notes = [_render_entry(entry) for entry in entries]
++    if kind is not None:
++        notes = [note for note in notes if note["kind"] == kind]
+     return {
