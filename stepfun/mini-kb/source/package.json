@@ -4,12 +4,16 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/index.js --dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server/index.js",
+    "preview": "node server/index.js",
+    "test": "node --test test/*.test.js",
+    "test:integration": "node test/integration.js"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.4.1"
+    "@huggingface/transformers": "^3.4.1",
+    "seekdb": "1.4.0"
   },
   "devDependencies": {
     "vite": "^5.4.11"

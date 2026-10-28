@@ -1,0 +1,286 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>mini-kb 固定验收测试</title>
+<style>body{font:15px system-ui;max-width:1000px;margin:32px auto;padding:0 16px}pre{white-space:pre-wrap;overflow-wrap:anywhere}button{padding:10px;margin:8px}</style>
+<h1>mini-kb 固定验收测试</h1>
+<p>40 个单块文档、8 个预先标注查询、3 次重复。推理只在浏览器 Worker 中运行。默认复测 INT8；使用 ?quantization=1 比较本地 FP32 与 INT8，不写入知识库。</p>
+<button id="run">运行（需要数分钟）</button><button id="download" disabled>下载完整 JSON</button>
+<pre id="output">请保持页面前台。只加载 INT8 权重；缓存可用时不会重新下载模型。</pre>
+<script type="module">
+import { BrowserEmbedding } from '../src/embedding-client.js'
+import { EMBEDDING } from '../shared/embedding.js'
+
+const $ = id => document.getElementById(id)
+const repeats = 3
+const median = values => {
+  const sorted = [...values].sort((a, b) => a - b)
+  return (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2
+}
+const assert = (condition, message) => { if (!condition) throw Error(message) }
+const log = text => { $('output').textContent += '\n' + text; console.log(text) }
+const sha256 = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('')
+async function api(path, method = 'GET', data) {
+  const response = await fetch('/api' + path, { method, ...(data === undefined ? {} : {
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }) })
+  const result = await response.json()
+  assert(response.ok, result.error || response.status)
+  return result
+}
+function recall(ranks, queries) {
+  const perQuery = ranks.map((rank, i) => rank.slice(0, 5).filter(id => queries[i].relevant.includes(id)).length / queries[i].relevant.length)
+  return { mean: perQuery.reduce((a, b) => a + b, 0) / perQuery.length, perQuery, ranks }
+}
+function vectorRanks(documents, queries) {
+  // Evaluation of a SINGLE cosine channel isolates quantization error; this is
+  // not the application's retrieval path and never fuses lexical/vector lists.
+  return queries.map(query => documents.map((vector, id) => ({
+    id, score: vector.reduce((sum, value, index) => sum + value * query[index], 0),
+  })).sort((a, b) => b.score - a.score || a.id - b.id).slice(0, 5).map(item => item.id))
+}
+function checkVectors(vectors) {
+  for (const vector of vectors) assert(vector.length === 384 && vector.every(Number.isFinite)
+    && Math.abs(Math.hypot(...vector) - 1) < 0.002, 'Invalid browser vector')
+}
+async function encode(engine, texts, batch) {
+  const started = performance.now()
+  const vectors = []
+  for (let offset = 0; offset < texts.length; offset += batch) vectors.push(...await engine.embed(texts.slice(offset, offset + batch)))
+  const elapsedMs = performance.now() - started
+  checkVectors(vectors)
+  return { vectors, elapsedMs, chunksPerSecond: texts.length * 1000 / elapsedMs }
+}
+// Minimal read-only protobuf inspection: skip raw weights, inspect operator names
+// and initializer data_type. No ONNX/Python/framework dependency is introduced.
+function* fields(bytes) {
+  let pos = 0
+  const integer = () => { let value = 0, shift = 0, byte; do {
+    byte = bytes[pos++]; value += (byte & 127) * 2 ** shift; shift += 7
+  } while (byte & 128); return value }
+  while (pos < bytes.length) {
+    const tag = integer(), field = Math.floor(tag / 8), wire = tag % 8
+    let value
+    if (wire === 0) value = integer()
+    else if (wire === 2) { const length = integer(); value = bytes.subarray(pos, pos + length); pos += length }
+    else if (wire === 1) pos += 8
+    else if (wire === 5) pos += 4
+    else throw Error('Unsupported protobuf wire: ' + wire)
+    yield { field, value }
+  }
+}
+function inspectOnnx(buffer) {
+  const decoder = new TextDecoder(), operators = {}, initializerTypes = {}
+  let producer = '', producerVersion = ''
+  for (const { field, value } of fields(new Uint8Array(buffer))) {
+    if (field === 2) producer = decoder.decode(value)
+    if (field === 3) producerVersion = decoder.decode(value)
+    if (field !== 7) continue
+    for (const entry of fields(value)) {
+      if (entry.field === 1) for (const node of fields(entry.value)) {
+        if (node.field === 4) { const op = decoder.decode(node.value); operators[op] = (operators[op] || 0) + 1 }
+      }
+      if (entry.field === 5) for (const tensor of fields(entry.value)) {
+        if (tensor.field === 2) initializerTypes[tensor.value] = (initializerTypes[tensor.value] || 0) + 1
+      }
+    }
+  }
+  return { producer, producerVersion, operators, initializerTypes }
+}
+async function inspectModel(dtype, filename, expectedHash) {
+  const url = `https://huggingface.co/${EMBEDDING.model}/resolve/${EMBEDDING.revision}/onnx/${filename}`
+  const response = await caches.match(url) || await fetch(url)
+  assert(response.ok, 'Cannot download ' + filename)
+  const buffer = await response.arrayBuffer()
+  const hash = await sha256(buffer)
+  assert(hash === expectedHash, 'Model hash mismatch: ' + filename)
+  return { dtype, filename, url, bytes: buffer.byteLength, sha256: hash, ...inspectOnnx(buffer) }
+}
+async function query(engine, kbId, text) {
+  const started = performance.now()
+  const [vector] = await engine.embed([text])
+  const embeddingMs = performance.now() - started
+  const result = await api(`/kbs/${kbId}/search`, 'POST', { text, vector, embedding: engine.embedding, topK: 5 })
+  assert(result.results.every(item => item.metadata.kbId === kbId), 'Knowledge base leak')
+  return { embeddingMs, searchMs: result.timings.searchMs, serverMs: result.timings.totalMs,
+    endToEndMs: performance.now() - started,
+    rank: result.results.map(item => Number(item.metadata.name.match(/d(\d+)\.txt/)[1])) }
+}
+
+async function quantizationComparison() {
+  const fixtureText = await (await fetch('./fixtures.json')).text()
+  const fixture = JSON.parse(fixtureText)
+  assert(fixture.documents.length === 40 && fixture.queries.length === 8, 'Fixed fixture changed')
+  // Evaluation-only cache entry. Production model URL, Worker, API, and dtype
+  // remain unchanged. The hash binds a mirror /main download to our fixed revision.
+  const local = await fetch('/models/fp32/model.onnx')
+  assert(local.ok, 'Place the FP32 file at source/models/fp32/model.onnx')
+  const bytes = await local.arrayBuffer()
+  const expected = '759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e'
+  assert(bytes.byteLength === 90387606 && await sha256(bytes) === expected, 'FP32 size/revision hash mismatch; comparison aborted')
+  const base = `https://huggingface.co/${EMBEDDING.model}/resolve/${EMBEDDING.revision}/`
+  const cache = await caches.open('transformers-cache')
+  await cache.put(base + 'onnx/model.onnx', new Response(bytes, {
+    headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(bytes.byteLength) },
+  }))
+  const report = {
+    measuredAt: new Date().toISOString(), repeats, backend: 'wasm', batchSize: 8,
+    corpus: { documents: 40, queries: 8, sha256: await sha256(new TextEncoder().encode(fixtureText)) },
+    environment: { userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency,
+      deviceMemoryGiB: navigator.deviceMemory, crossOriginIsolated },
+    embedding: EMBEDDING, runs: { q8: [], fp32: [] },
+    fp32Source: 'https://hf-mirror.com/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx',
+    conditions: 'Same fixed revision/tokenizer/mean pooling/L2 normalization/384D, WASM, one warmup, batch 8 documents, single-query calls; alternate dtype order; three fresh Workers per dtype. Excludes model loading and network transfer.',
+    endToEnd: { fp32: null, reason: 'Production API accepts q8 only; no changes to the production protocol or database are made for this comparison.' },
+  }
+  for (let rep = 0; rep < repeats; rep++) for (const dtype of rep % 2 ? ['fp32', 'q8'] : ['q8', 'fp32']) {
+    log(`Quantization ${dtype} ${rep + 1}/${repeats}`)
+    const encoder = new BrowserEmbedding(() => {})
+    try {
+      const info = await encoder.init({ preferGPU: false, dtype, warmup: true })
+      assert(info.backend === 'wasm' && info.embedding.dtype === dtype, 'Unexpected inference configuration')
+      const documents = await encode(encoder, fixture.documents, 8)
+      const queryVectors = [], queryMs = []
+      for (const item of fixture.queries) {
+        const started = performance.now()
+        queryVectors.push(...await encoder.embed([item.text]))
+        queryMs.push(performance.now() - started)
+      }
+      checkVectors(queryVectors)
+      report.runs[dtype].push({ loading: info.timings, documentMs: documents.elapsedMs,
+        chunksPerSecond: documents.chunksPerSecond, queryMs,
+        recall5: recall(vectorRanks(documents.vectors, queryVectors), fixture.queries) })
+    } finally { encoder.dispose() }
+  }
+  report.models = [await inspectModel('fp32', 'model.onnx', expected),
+    await inspectModel('q8', 'model_quantized.onnx', 'afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1')]
+  // Confirm the exact shared tokenizer/config blobs against this revision's Git IDs.
+  report.tokenizer = []
+  for (const [file, blobId] of Object.entries({ 'config.json': '72147e4ff4426ebedbfa2146c4a0999def51a313',
+    'tokenizer.json': 'c17ed520ed8438736732a54957a69306b8822215',
+    'tokenizer_config.json': '37fca74771bc76a8e01178ce3a6055a0995f8093',
+    'special_tokens_map.json': 'a8b3208c2884c4efb86e49300fdd3dc877220cdf' })) {
+    const response = await cache.match(base + file) || await fetch(base + file)
+    assert(response.ok, 'Missing shared tokenizer/config: ' + file)
+    const content = await response.arrayBuffer()
+    const gitBytes = new Blob([`blob ${content.byteLength}\0`, content])
+    const actual = [...new Uint8Array(await crypto.subtle.digest('SHA-1', await gitBytes.arrayBuffer()))].map(x => x.toString(16).padStart(2, '0')).join('')
+    assert(actual === blobId, 'Tokenizer/config revision mismatch: ' + file)
+    report.tokenizer.push({ file, bytes: content.byteLength, gitBlobId: actual, sha256: await sha256(content) })
+  }
+  report.summary = Object.fromEntries(['fp32', 'q8'].map(dtype => [dtype, {
+    bytes: report.models.find(model => model.dtype === dtype).bytes,
+    chunksPerSecond: median(report.runs[dtype].map(run => run.chunksPerSecond)),
+    queryEmbeddingMs: median(report.runs[dtype].flatMap(run => run.queryMs)),
+    recall5: median(report.runs[dtype].map(run => run.recall5.mean)),
+  }]))
+  report.compressionRatio = report.summary.fp32.bytes / report.summary.q8.bytes
+  report.recall5ChangeInt8MinusFp32 = report.summary.q8.recall5 - report.summary.fp32.recall5
+  return report
+}
+
+$('download').onclick = () => {
+  const anchor = document.createElement('a')
+  anchor.href = URL.createObjectURL(new Blob([JSON.stringify(window.acceptanceResult, null, 2)], { type: 'application/json' }))
+  anchor.download = 'acceptance.json'; anchor.click(); URL.revokeObjectURL(anchor.href)
+}
+$('run').onclick = async () => {
+  $('run').disabled = true
+  $('output').textContent = 'Running…'
+  const ownedKbs = [], engines = []
+  const engine = () => { const value = new BrowserEmbedding(() => {}); engines.push(value); return value }
+  try {
+    if (new URLSearchParams(location.search).has('quantization')) {
+      window.acceptanceResult = await quantizationComparison()
+      $('download').disabled = false
+      log('PASS\n' + JSON.stringify(window.acceptanceResult.summary, null, 2))
+      return
+    }
+    const fixtureText = await (await fetch('./fixtures.json')).text()
+    const fixture = JSON.parse(fixtureText), health = await api('/health')
+    assert(fixture.documents.length === 40 && fixture.queries.length === 8, 'Fixed fixture changed')
+    const report = {
+      measuredAt: new Date().toISOString(), repeats, corpus: { documents: 40, queries: 8, sha256: await sha256(new TextEncoder().encode(fixtureText)) },
+      environment: { userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemoryGiB: navigator.deviceMemory, crossOriginIsolated, database: health.version,
+        firstLoadCacheState: 'existing browser model cache reused; external-network cold download not measured' },
+      embedding: EMBEDDING, loading: {}, documentEmbedding: { batch8: [] }, quality: {}, writes: [], queries: [],
+      fp32: { status: '本模式未测', reason: 'Run ?quantization=1 with the verified local FP32 file for the separate paired comparison.', upstreamExpectedBytes: 90387606 },
+    }
+    const vectors = {}, queryVectors = {}
+    for (const dtype of ['q8']) {
+      report.loading[dtype] = []
+      // One first-use load is kept separate from three cached fresh-Worker loads.
+      for (let rep = 0; rep <= repeats; rep++) {
+        log(`${dtype} model load ${rep + 1}/${repeats + 1}`)
+        const encoder = engine()
+        const info = await encoder.init({ preferGPU: false, dtype, warmup: true })
+        const firstStarted = performance.now()
+        await encoder.embed([fixture.queries[0].text])
+        report.loading[dtype].push({ modelMs: info.timings.modelMs, readyMs: info.readyMs,
+          firstQueryAfterReadyMs: performance.now() - firstStarted,
+          cache: rep === 0 ? 'first model use in this run' : 'fresh Worker, cached model' })
+        if (rep < repeats) {
+          const encoded = await encode(encoder, fixture.documents, 8)
+          report.documentEmbedding.batch8.push({ elapsedMs: encoded.elapsedMs, chunksPerSecond: encoded.chunksPerSecond })
+          if (rep === 0) vectors[dtype] = encoded.vectors
+        }
+        if (rep === 0) queryVectors[dtype] = (await encode(encoder, fixture.queries.map(item => item.text), 1)).vectors
+        encoder.dispose()
+      }
+      report.quality[dtype] = recall(vectorRanks(vectors[dtype], queryVectors[dtype]), fixture.queries)
+    }
+    const encoder = engine()
+    await encoder.init({ preferGPU: false })
+    let finalKb
+    for (let rep = 0; rep < repeats; rep++) {
+      log(`seekdb write + eight queries ${rep + 1}/${repeats}`)
+      const kb = await api('/kbs', 'POST', { name: `acceptance-${Date.now()}-${rep}` })
+      ownedKbs.push(kb.id); finalKb = kb.id
+      const write = { writeMs: 0, refreshMs: 0, serverMs: 0, httpMs: 0, chunks: 0 }
+      for (const [id, text] of fixture.documents.entries()) {
+        const started = performance.now()
+        const document = await api(`/kbs/${kb.id}/documents`, 'POST', {
+          name: `d${id}.txt`, text, vectors: [vectors.q8[id]], embedding: encoder.embedding, backend: encoder.backend,
+        })
+        assert(document.chunkCount === 1, 'Expected one chunk per document')
+        write.writeMs += document.timings.writeMs; write.refreshMs += document.timings.refreshMs
+        write.serverMs += document.timings.totalMs; write.httpMs += performance.now() - started; write.chunks++
+      }
+      report.writes.push(write)
+      const rows = []
+      for (const item of fixture.queries) rows.push(await query(encoder, kb.id, item.text))
+      report.queries.push(rows)
+      const quality = recall(rows.map(item => item.rank), fixture.queries)
+      if (rep === 0) report.quality.hybridQ8 = quality
+      else assert(quality.mean === report.quality.hybridQ8.mean, 'Repeated hybrid Recall changed')
+    }
+    encoder.dispose()
+    report.webgpu = { status: '本轮停止继续排查', adapter: null, webgpuInferenceVerified: false,
+      reason: 'Prior default and Vulkan Chrome probes both returned no GPUAdapter; actual measured backend is WASM.' }
+    log('Read actual model bytes, SHA-256, quantization operators and tensor types')
+    report.models = [
+      await inspectModel('q8', 'model_quantized.onnx', 'afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1'),
+    ]
+    report.compressionRatio = null // FP32 file was not acquired; do not fabricate an actual measured compression ratio.
+    const samples = report.queries.flat()
+    report.summary = {
+      fp32Recall5: null, int8Recall5: report.quality.q8.mean, hybridInt8Recall5: report.quality.hybridQ8.mean,
+      batch8ChunksPerSecond: median(report.documentEmbedding.batch8.map(row => row.chunksPerSecond)),
+      write40Ms: median(report.writes.map(row => row.writeMs)), refresh40Ms: median(report.writes.map(row => row.refreshMs)),
+      queryEmbeddingMs: median(samples.map(row => row.embeddingMs)), seekdbSearchMs: median(samples.map(row => row.searchMs)), endToEndMs: median(samples.map(row => row.endToEndMs)),
+    }
+    window.acceptanceResult = report
+    $('download').disabled = false
+    log('PASS\n' + JSON.stringify(report.summary, null, 2) + '\n' + JSON.stringify(report.webgpu, null, 2))
+  } catch (error) {
+    window.acceptanceError = error.stack || String(error)
+    log('FAIL: ' + window.acceptanceError)
+  } finally {
+    for (const value of engines) value.dispose()
+    for (const id of ownedKbs) await api(`/kbs/${id}`, 'DELETE')
+    window.acceptanceFinished = true
+    $('run').disabled = false
+  }
+}
+</script>

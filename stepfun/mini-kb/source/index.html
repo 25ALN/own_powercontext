@@ -3,21 +3,64 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>mini-kb · 端侧 embedding 最小 demo</title>
+    <link rel="icon" href="data:," />
+    <title>mini-kb · 浏览器本地 Embedding + seekdb</title>
   </head>
   <body>
-    <h2>浏览器本地 embedding（Transformers.js）</h2>
-
-    <div id="status">状态：未初始化</div>
-    <div id="backend">推理后端：-</div>
-    <div id="gpuHint"></div>
-
-    <textarea id="text" rows="4" placeholder="输入一句话，生成它的向量"></textarea>
-    <br />
-    <button id="btn">生成向量</button>
-
-    <div id="result"></div>
-
+    <main>
+      <header>
+        <p class="eyebrow">OceanBase 2026 · stepfun</p>
+        <h1>mini-kb 知识库检索</h1>
+        <p>浏览器本地向量化 · seekdb 全文与向量混合检索</p>
+        <div class="status" aria-live="polite">
+          <div id="databaseStatus">正在连接数据库…</div>
+          <div id="modelStatus">正在下载模型并初始化推理后端…</div>
+          <div id="backend">实际推理后端：等待初始化</div>
+          <div id="gpuHint" class="muted"></div>
+        </div>
+      </header>
+      <section>
+        <h2>知识库</h2>
+        <div class="row">
+          <select id="kbSelect" aria-label="当前知识库"></select>
+          <button id="refreshIndex" type="button" disabled>刷新索引</button>
+          <button id="deleteKb" type="button" disabled>删除知识库</button>
+        </div>
+        <form id="kbForm" class="row">
+          <input id="kbName" placeholder="新知识库名称" aria-label="新知识库名称" required maxlength="100" />
+          <button id="createKb" type="submit">创建知识库</button>
+        </form>
+      </section>
+      <section>
+        <h2>导入文档</h2>
+        <p class="muted">UTF-8 TXT / Markdown，可多选；单篇最多 1 MiB、512 块。原文与分块一并保存。</p>
+        <form id="importForm" class="row">
+          <input id="files" aria-label="选择文档" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" multiple />
+          <button id="importButton" type="submit" disabled>本地向量化并导入</button>
+        </form>
+        <ul id="documentList" aria-live="polite"></ul>
+      </section>
+      <div id="message" role="status" aria-live="polite"></div>
+      <section>
+        <h2>混合检索</h2>
+        <form id="searchForm">
+          <textarea id="query" rows="3" required maxlength="1000" placeholder="输入问题或关键词…" aria-label="查询内容"></textarea>
+          <div class="row">
+            <label for="topK">Top K</label>
+            <input id="topK" type="number" min="1" max="50" value="5" required />
+            <button id="searchButton" type="submit" disabled>检索当前知识库</button>
+          </div>
+        </form>
+        <p id="searchStatus" aria-live="polite"></p>
+        <div id="results"></div>
+      </section>
+      <footer>首次加载会下载开源模型文件；文档和查询的 Embedding 均在浏览器中运行。</footer>
+    </main>
+    <dialog id="documentDialog">
+      <button id="closeDocument" type="button">关闭</button>
+      <h2 id="documentTitle"></h2>
+      <pre id="documentText"></pre>
+    </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

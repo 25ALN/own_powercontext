@@ -1,0 +1,21 @@
+name: stepfun-mini-kb
+services:
+  seekdb:
+    image: quay.io/oceanbase/seekdb:1.4.0-100000172026082615
+    ports:
+      - "127.0.0.1:2881:2881"
+    environment:
+      MEMORY_LIMIT: 2G
+      CPU_COUNT: "2"
+      LOG_DISK_SIZE: 2G
+      DATAFILE_SIZE: 1G
+      DATAFILE_NEXT: 1G
+      DATAFILE_MAXSIZE: 4G
+      SEEKDB_DATABASE: mini_kb
+    volumes:
+      - ./.data/seekdb:/var/lib/seekdb
+    healthcheck:
+      test: ["CMD", "mysql", "-h127.0.0.1", "-P2881", "-uroot", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60

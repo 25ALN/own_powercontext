@@ -1,0 +1,1381 @@
+{
+  "measuredAt": "2026-10-28T13:58:43.372Z",
+  "repeats": 3,
+  "corpus": {
+    "documents": 40,
+    "queries": 8,
+    "sha256": "c8c892400d285f878107df07e3aa76ae7be3a0494891bbd609f1560199e1f022"
+  },
+  "environment": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "hardwareConcurrency": 24,
+    "deviceMemoryGiB": 16,
+    "crossOriginIsolated": false,
+    "database": "5.7.25-OceanBase seekdb-v1.4.0.0",
+    "firstLoadCacheState": "existing browser model cache reused; external-network cold download not measured",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12800HX",
+    "physicalMemoryBytes": 16473559040,
+    "node": "v20.19.0",
+    "chromeLaunchArgs": [
+      "--no-sandbox"
+    ],
+    "softwareWebgpuDisabled": true,
+    "modelDownloadProxy": "http://127.0.0.1:7897",
+    "hardwareGpu": "NVIDIA GeForce RTX 4070 Laptop GPU; driver 615.78.08",
+    "additionalGpuProbe": {
+      "args": [
+        "--enable-unsafe-webgpu",
+        "--enable-features=Vulkan",
+        "--use-angle=vulkan"
+      ],
+      "adapter": null
+    }
+  },
+  "embedding": {
+    "model": "Xenova/all-MiniLM-L6-v2",
+    "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+    "dtype": "q8",
+    "dimension": 384,
+    "pooling": "mean",
+    "normalize": true
+  },
+  "loading": {
+    "q8": [
+      {
+        "modelMs": 443.5,
+        "readyMs": 577.8000000119209,
+        "firstQueryAfterReadyMs": 11,
+        "cache": "first model use in this run"
+      },
+      {
+        "modelMs": 445.80000001192093,
+        "readyMs": 577.8999999761581,
+        "firstQueryAfterReadyMs": 12.200000017881393,
+        "cache": "fresh Worker, cached model"
+      },
+      {
+        "modelMs": 406.69999998807907,
+        "readyMs": 534.7000000178814,
+        "firstQueryAfterReadyMs": 11.5,
+        "cache": "fresh Worker, cached model"
+      },
+      {
+        "modelMs": 411.5,
+        "readyMs": 538.2000000178814,
+        "firstQueryAfterReadyMs": 11.799999982118607,
+        "cache": "fresh Worker, cached model"
+      }
+    ]
+  },
+  "documentEmbedding": {
+    "batch8": [
+      {
+        "elapsedMs": 602.9000000059605,
+        "chunksPerSecond": 66.34599435993456
+      },
+      {
+        "elapsedMs": 627.9000000059605,
+        "chunksPerSecond": 63.70441152989376
+      },
+      {
+        "elapsedMs": 603.7999999821186,
+        "chunksPerSecond": 66.24710169126298
+      }
+    ]
+  },
+  "quality": {
+    "q8": {
+      "mean": 0.47500000000000003,
+      "perQuery": [
+        0.8,
+        0.6,
+        0.4,
+        0.6,
+        0.6,
+        0.6,
+        0,
+        0.2
+      ],
+      "ranks": [
+        [
+          1,
+          0,
+          2,
+          3,
+          25
+        ],
+        [
+          5,
+          6,
+          26,
+          7,
+          0
+        ],
+        [
+          10,
+          11,
+          18,
+          30,
+          22
+        ],
+        [
+          17,
+          15,
+          30,
+          16,
+          11
+        ],
+        [
+          20,
+          22,
+          7,
+          23,
+          26
+        ],
+        [
+          27,
+          25,
+          6,
+          28,
+          0
+        ],
+        [
+          39,
+          9,
+          29,
+          24,
+          19
+        ],
+        [
+          9,
+          24,
+          14,
+          39,
+          19
+        ]
+      ]
+    },
+    "hybridQ8": {
+      "mean": 0.47500000000000003,
+      "perQuery": [
+        0.4,
+        0.6,
+        0.4,
+        0.6,
+        0.8,
+        0.6,
+        0.2,
+        0.2
+      ],
+      "ranks": [
+        [
+          1,
+          2,
+          32,
+          22,
+          27
+        ],
+        [
+          6,
+          5,
+          26,
+          7,
+          0
+        ],
+        [
+          10,
+          12,
+          18,
+          20,
+          21
+        ],
+        [
+          30,
+          16,
+          17,
+          18,
+          11
+        ],
+        [
+          20,
+          22,
+          23,
+          10,
+          21
+        ],
+        [
+          27,
+          25,
+          6,
+          28,
+          2
+        ],
+        [
+          9,
+          39,
+          34,
+          4,
+          29
+        ],
+        [
+          9,
+          39,
+          24,
+          14,
+          29
+        ]
+      ]
+    }
+  },
+  "writes": [
+    {
+      "writeMs": 520.3508000008296,
+      "refreshMs": 23487.821673000697,
+      "serverMs": 24354.384641000535,
+      "httpMs": 24558.09999999404,
+      "chunks": 40
+    },
+    {
+      "writeMs": 322.1690100003034,
+      "refreshMs": 24473.263130999403,
+      "serverMs": 25076.64122099988,
+      "httpMs": 25267.000000029802,
+      "chunks": 40
+    },
+    {
+      "writeMs": 290.414579000324,
+      "refreshMs": 23969.538497,
+      "serverMs": 24498.978511000518,
+      "httpMs": 24677.30000001192,
+      "chunks": 40
+    }
+  ],
+  "queries": [
+    [
+      {
+        "embeddingMs": 9.300000011920929,
+        "searchMs": 22.112938000122085,
+        "serverMs": 26.141018999973312,
+        "endToEndMs": 37.900000005960464,
+        "rank": [
+          1,
+          2,
+          32,
+          22,
+          27
+        ]
+      },
+      {
+        "embeddingMs": 8,
+        "searchMs": 3.767833000048995,
+        "serverMs": 4.938883999828249,
+        "endToEndMs": 14.900000005960464,
+        "rank": [
+          6,
+          5,
+          26,
+          7,
+          0
+        ]
+      },
+      {
+        "embeddingMs": 8,
+        "searchMs": 3.153675999958068,
+        "serverMs": 4.221884000115097,
+        "endToEndMs": 13.900000005960464,
+        "rank": [
+          10,
+          12,
+          18,
+          20,
+          21
+        ]
+      },
+      {
+        "embeddingMs": 10.899999976158142,
+        "searchMs": 4.204358999850228,
+        "serverMs": 5.263727999990806,
+        "endToEndMs": 18,
+        "rank": [
+          30,
+          16,
+          17,
+          18,
+          11
+        ]
+      },
+      {
+        "embeddingMs": 9.299999982118607,
+        "searchMs": 3.317456000018865,
+        "serverMs": 4.4274299999233335,
+        "endToEndMs": 15.5,
+        "rank": [
+          20,
+          22,
+          23,
+          10,
+          21
+        ]
+      },
+      {
+        "embeddingMs": 8.299999982118607,
+        "searchMs": 3.7994769997894764,
+        "serverMs": 4.6098869999405,
+        "endToEndMs": 14.899999976158142,
+        "rank": [
+          27,
+          25,
+          6,
+          28,
+          2
+        ]
+      },
+      {
+        "embeddingMs": 14.100000023841858,
+        "searchMs": 4.424380999989808,
+        "serverMs": 5.514922000002116,
+        "endToEndMs": 21.700000017881393,
+        "rank": [
+          9,
+          39,
+          34,
+          4,
+          29
+        ]
+      },
+      {
+        "embeddingMs": 13.299999982118607,
+        "searchMs": 3.4947869998868555,
+        "serverMs": 4.304487999994308,
+        "endToEndMs": 19.69999998807907,
+        "rank": [
+          9,
+          39,
+          24,
+          14,
+          29
+        ]
+      }
+    ],
+    [
+      {
+        "embeddingMs": 21.5,
+        "searchMs": 24.016120000043884,
+        "serverMs": 26.619575999910012,
+        "endToEndMs": 50.900000005960464,
+        "rank": [
+          1,
+          2,
+          32,
+          22,
+          27
+        ]
+      },
+      {
+        "embeddingMs": 17.599999994039536,
+        "searchMs": 6.530850000213832,
+        "serverMs": 8.559739999938756,
+        "endToEndMs": 28.799999982118607,
+        "rank": [
+          6,
+          5,
+          26,
+          7,
+          0
+        ]
+      },
+      {
+        "embeddingMs": 11.400000005960464,
+        "searchMs": 3.5987599999643862,
+        "serverMs": 5.003389999968931,
+        "endToEndMs": 18,
+        "rank": [
+          10,
+          12,
+          18,
+          20,
+          21
+        ]
+      },
+      {
+        "embeddingMs": 8,
+        "searchMs": 5.851365000009537,
+        "serverMs": 8.80690800002776,
+        "endToEndMs": 18.80000001192093,
+        "rank": [
+          30,
+          16,
+          17,
+          18,
+          11
+        ]
+      },
+      {
+        "embeddingMs": 8.599999994039536,
+        "searchMs": 3.017328000161797,
+        "serverMs": 3.951541000045836,
+        "endToEndMs": 14.099999994039536,
+        "rank": [
+          20,
+          22,
+          23,
+          10,
+          21
+        ]
+      },
+      {
+        "embeddingMs": 8.300000011920929,
+        "searchMs": 3.1734440000727773,
+        "serverMs": 3.937216999940574,
+        "endToEndMs": 13.800000011920929,
+        "rank": [
+          27,
+          25,
+          6,
+          28,
+          2
+        ]
+      },
+      {
+        "embeddingMs": 13.699999988079071,
+        "searchMs": 3.5836949998047203,
+        "serverMs": 4.308381000068039,
+        "endToEndMs": 19.599999994039536,
+        "rank": [
+          9,
+          39,
+          34,
+          4,
+          29
+        ]
+      },
+      {
+        "embeddingMs": 12.599999994039536,
+        "searchMs": 3.3768469998613,
+        "serverMs": 4.283203000202775,
+        "endToEndMs": 18.69999998807907,
+        "rank": [
+          9,
+          39,
+          24,
+          29,
+          14
+        ]
+      }
+    ],
+    [
+      {
+        "embeddingMs": 7.5999999940395355,
+        "searchMs": 13.148191000102088,
+        "serverMs": 14.554177000187337,
+        "endToEndMs": 24.19999998807907,
+        "rank": [
+          1,
+          2,
+          32,
+          22,
+          27
+        ]
+      },
+      {
+        "embeddingMs": 8.099999994039536,
+        "searchMs": 4.31218699994497,
+        "serverMs": 5.384021000005305,
+        "endToEndMs": 15.200000017881393,
+        "rank": [
+          6,
+          5,
+          26,
+          7,
+          0
+        ]
+      },
+      {
+        "embeddingMs": 8.299999982118607,
+        "searchMs": 3.6376099998597056,
+        "serverMs": 4.499811999965459,
+        "endToEndMs": 14.699999988079071,
+        "rank": [
+          10,
+          12,
+          18,
+          20,
+          21
+        ]
+      },
+      {
+        "embeddingMs": 8.300000011920929,
+        "searchMs": 4.22131000016816,
+        "serverMs": 5.4305249999742955,
+        "endToEndMs": 15.5,
+        "rank": [
+          30,
+          16,
+          17,
+          18,
+          11
+        ]
+      },
+      {
+        "embeddingMs": 8.199999988079071,
+        "searchMs": 3.9171970000024885,
+        "serverMs": 5.078944999957457,
+        "endToEndMs": 15.099999994039536,
+        "rank": [
+          20,
+          22,
+          23,
+          10,
+          21
+        ]
+      },
+      {
+        "embeddingMs": 8,
+        "searchMs": 4.321517999982461,
+        "serverMs": 5.217938000103459,
+        "endToEndMs": 15.5,
+        "rank": [
+          27,
+          25,
+          6,
+          28,
+          2
+        ]
+      },
+      {
+        "embeddingMs": 13.599999994039536,
+        "searchMs": 4.72845400008373,
+        "serverMs": 5.933216999983415,
+        "endToEndMs": 21.900000005960464,
+        "rank": [
+          9,
+          39,
+          34,
+          4,
+          29
+        ]
+      },
+      {
+        "embeddingMs": 12.5,
+        "searchMs": 4.302186999935657,
+        "serverMs": 5.492862000130117,
+        "endToEndMs": 20.30000001192093,
+        "rank": [
+          9,
+          39,
+          24,
+          29,
+          14
+        ]
+      }
+    ]
+  ],
+  "fp32": {
+    "status": "已测",
+    "measuredAt": "2026-10-28T14:14:39.012Z",
+    "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+    "source": "https://hf-mirror.com/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+    "previousAttempt": {
+      "status": "未测",
+      "reason": "CDN connections repeatedly closed; the final bounded range-resume attempt failed with TLS unexpected EOF. No further attempts.",
+      "upstreamExpectedBytes": 90387606
+    },
+    "summary": {
+      "bytes": 90387606,
+      "chunksPerSecond": 48.40271055144179,
+      "queryEmbeddingMs": 10.600000008940697,
+      "recall5": 0.47500000000000003
+    },
+    "details": "quantizationComparison"
+  },
+  "webgpu": {
+    "status": "本轮停止继续排查",
+    "adapter": null,
+    "webgpuInferenceVerified": false,
+    "reason": "Prior default and Vulkan Chrome probes both returned no GPUAdapter; actual measured backend is WASM."
+  },
+  "models": [
+    {
+      "dtype": "q8",
+      "filename": "model_quantized.onnx",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_quantized.onnx",
+      "bytes": 22972370,
+      "sha256": "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1",
+      "producer": "onnx.quantize",
+      "producerVersion": "0.1.0",
+      "operators": {
+        "Constant": 146,
+        "Unsqueeze": 51,
+        "Shape": 49,
+        "Gather": 52,
+        "DequantizeLinear": 3,
+        "Cast": 37,
+        "Add": 88,
+        "Sub": 14,
+        "Slice": 1,
+        "Mul": 98,
+        "ReduceMean": 26,
+        "Pow": 13,
+        "Sqrt": 13,
+        "Div": 25,
+        "DynamicQuantizeLinear": 24,
+        "MatMulInteger": 36,
+        "Concat": 24,
+        "Reshape": 24,
+        "Transpose": 24,
+        "MatMul": 12,
+        "Softmax": 6,
+        "Erf": 6
+      },
+      "initializerTypes": {
+        "1": 101,
+        "2": 6,
+        "3": 72,
+        "7": 1
+      }
+    },
+    {
+      "dtype": "fp32",
+      "filename": "model.onnx",
+      "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model.onnx",
+      "bytes": 90387606,
+      "sha256": "759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e",
+      "producer": "pytorch",
+      "producerVersion": "2.0.1",
+      "operators": {
+        "Unsqueeze": 51,
+        "Cast": 1,
+        "Constant": 146,
+        "Sub": 14,
+        "Mul": 26,
+        "Shape": 49,
+        "Gather": 52,
+        "Slice": 1,
+        "Add": 88,
+        "ReduceMean": 26,
+        "Pow": 13,
+        "Sqrt": 13,
+        "Div": 25,
+        "MatMul": 48,
+        "Concat": 24,
+        "Reshape": 24,
+        "Transpose": 24,
+        "Softmax": 6,
+        "Erf": 6
+      },
+      "initializerTypes": {
+        "1": 101,
+        "7": 1
+      }
+    }
+  ],
+  "compressionRatio": 3.9346225922706277,
+  "summary": {
+    "fp32Recall5": 0.47500000000000003,
+    "int8Recall5": 0.47500000000000003,
+    "hybridInt8Recall5": 0.47500000000000003,
+    "batch8ChunksPerSecond": 66.24710169126298,
+    "write40Ms": 322.1690100003034,
+    "refresh40Ms": 23969.538497,
+    "queryEmbeddingMs": 8.949999988079071,
+    "seekdbSearchMs": 4.0607779999263585,
+    "endToEndMs": 18
+  },
+  "quantizationComparison": {
+    "measuredAt": "2026-10-28T14:14:39.012Z",
+    "repeats": 3,
+    "backend": "wasm",
+    "batchSize": 8,
+    "corpus": {
+      "documents": 40,
+      "queries": 8,
+      "sha256": "c8c892400d285f878107df07e3aa76ae7be3a0494891bbd609f1560199e1f022"
+    },
+    "environment": {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+      "hardwareConcurrency": 24,
+      "deviceMemoryGiB": 16,
+      "crossOriginIsolated": false,
+      "cpu": "12th Gen Intel(R) Core(TM) i7-12800HX",
+      "physicalMemoryBytes": 16473559040,
+      "node": "v20.19.0"
+    },
+    "embedding": {
+      "model": "Xenova/all-MiniLM-L6-v2",
+      "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+      "dtype": "q8",
+      "dimension": 384,
+      "pooling": "mean",
+      "normalize": true
+    },
+    "runs": {
+      "q8": [
+        {
+          "loading": {
+            "modelMs": 417.80000001192093,
+            "warmupMs": 51.099999994039536,
+            "totalMs": 468.90000000596046
+          },
+          "documentMs": 587.5,
+          "chunksPerSecond": 68.08510638297872,
+          "queryMs": [
+            8,
+            7.799999982118607,
+            7.600000023841858,
+            7,
+            8.199999988079071,
+            9.099999994039536,
+            12.700000017881393,
+            15.399999976158142
+          ],
+          "recall5": {
+            "mean": 0.47500000000000003,
+            "perQuery": [
+              0.8,
+              0.6,
+              0.4,
+              0.6,
+              0.6,
+              0.6,
+              0,
+              0.2
+            ],
+            "ranks": [
+              [
+                1,
+                0,
+                2,
+                3,
+                25
+              ],
+              [
+                5,
+                6,
+                26,
+                7,
+                0
+              ],
+              [
+                10,
+                11,
+                18,
+                30,
+                22
+              ],
+              [
+                17,
+                15,
+                30,
+                16,
+                11
+              ],
+              [
+                20,
+                22,
+                7,
+                23,
+                26
+              ],
+              [
+                27,
+                25,
+                6,
+                28,
+                0
+              ],
+              [
+                39,
+                9,
+                29,
+                24,
+                19
+              ],
+              [
+                9,
+                24,
+                14,
+                39,
+                19
+              ]
+            ]
+          }
+        },
+        {
+          "loading": {
+            "modelMs": 438.90000000596046,
+            "warmupMs": 51.900000005960464,
+            "totalMs": 490.80000001192093
+          },
+          "documentMs": 591.1999999880791,
+          "chunksPerSecond": 67.6589986481843,
+          "queryMs": [
+            8.299999982118607,
+            7.800000011920929,
+            7.5999999940395355,
+            7.0999999940395355,
+            7.4000000059604645,
+            7.9000000059604645,
+            12.599999994039536,
+            12
+          ],
+          "recall5": {
+            "mean": 0.47500000000000003,
+            "perQuery": [
+              0.8,
+              0.6,
+              0.4,
+              0.6,
+              0.6,
+              0.6,
+              0,
+              0.2
+            ],
+            "ranks": [
+              [
+                1,
+                0,
+                2,
+                3,
+                25
+              ],
+              [
+                5,
+                6,
+                26,
+                7,
+                0
+              ],
+              [
+                10,
+                11,
+                18,
+                30,
+                22
+              ],
+              [
+                17,
+                15,
+                30,
+                16,
+                11
+              ],
+              [
+                20,
+                22,
+                7,
+                23,
+                26
+              ],
+              [
+                27,
+                25,
+                6,
+                28,
+                0
+              ],
+              [
+                39,
+                9,
+                29,
+                24,
+                19
+              ],
+              [
+                9,
+                24,
+                14,
+                39,
+                19
+              ]
+            ]
+          }
+        },
+        {
+          "loading": {
+            "modelMs": 432.89999997615814,
+            "warmupMs": 51.20000001788139,
+            "totalMs": 484.09999999403954
+          },
+          "documentMs": 606.3000000119209,
+          "chunksPerSecond": 65.97394029228687,
+          "queryMs": [
+            9,
+            8.300000011920929,
+            8.099999994039536,
+            7.4000000059604645,
+            7.799999982118607,
+            7.700000017881393,
+            13.899999976158142,
+            12.5
+          ],
+          "recall5": {
+            "mean": 0.47500000000000003,
+            "perQuery": [
+              0.8,
+              0.6,
+              0.4,
+              0.6,
+              0.6,
+              0.6,
+              0,
+              0.2
+            ],
+            "ranks": [
+              [
+                1,
+                0,
+                2,
+                3,
+                25
+              ],
+              [
+                5,
+                6,
+                26,
+                7,
+                0
+              ],
+              [
+                10,
+                11,
+                18,
+                30,
+                22
+              ],
+              [
+                17,
+                15,
+                30,
+                16,
+                11
+              ],
+              [
+                20,
+                22,
+                7,
+                23,
+                26
+              ],
+              [
+                27,
+                25,
+                6,
+                28,
+                0
+              ],
+              [
+                39,
+                9,
+                29,
+                24,
+                19
+              ],
+              [
+                9,
+                24,
+                14,
+                39,
+                19
+              ]
+            ]
+          }
+        }
+      ],
+      "fp32": [
+        {
+          "loading": {
+            "modelMs": 525.9000000059605,
+            "warmupMs": 55.79999998211861,
+            "totalMs": 581.6999999880791
+          },
+          "documentMs": 826.1000000238419,
+          "chunksPerSecond": 48.42028809931676,
+          "queryMs": [
+            10.099999994039536,
+            9.299999982118607,
+            10.600000023841858,
+            10.399999976158142,
+            11.600000023841858,
+            10.299999982118607,
+            18.400000005960464,
+            17.19999998807907
+          ],
+          "recall5": {
+            "mean": 0.47500000000000003,
+            "perQuery": [
+              0.8,
+              0.6,
+              0.4,
+              0.6,
+              0.6,
+              0.6,
+              0,
+              0.2
+            ],
+            "ranks": [
+              [
+                1,
+                0,
+                2,
+                3,
+                25
+              ],
+              [
+                5,
+                26,
+                6,
+                7,
+                0
+              ],
+              [
+                10,
+                11,
+                18,
+                22,
+                30
+              ],
+              [
+                17,
+                15,
+                30,
+                11,
+                16
+              ],
+              [
+                20,
+                22,
+                7,
+                23,
+                6
+              ],
+              [
+                27,
+                25,
+                6,
+                28,
+                0
+              ],
+              [
+                39,
+                9,
+                29,
+                24,
+                4
+              ],
+              [
+                9,
+                24,
+                14,
+                39,
+                19
+              ]
+            ]
+          }
+        },
+        {
+          "loading": {
+            "modelMs": 558.7999999821186,
+            "warmupMs": 51,
+            "totalMs": 609.7999999821186
+          },
+          "documentMs": 826.4000000059605,
+          "chunksPerSecond": 48.40271055144179,
+          "queryMs": [
+            9,
+            8.800000011920929,
+            9.5,
+            9.599999994039536,
+            10.799999982118607,
+            11,
+            17.80000001192093,
+            17.599999994039536
+          ],
+          "recall5": {
+            "mean": 0.47500000000000003,
+            "perQuery": [
+              0.8,
+              0.6,
+              0.4,
+              0.6,
+              0.6,
+              0.6,
+              0,
+              0.2
+            ],
+            "ranks": [
+              [
+                1,
+                0,
+                2,
+                3,
+                25
+              ],
+              [
+                5,
+                26,
+                6,
+                7,
+                0
+              ],
+              [
+                10,
+                11,
+                18,
+                22,
+                30
+              ],
+              [
+                17,
+                15,
+                30,
+                11,
+                16
+              ],
+              [
+                20,
+                22,
+                7,
+                23,
+                6
+              ],
+              [
+                27,
+                25,
+                6,
+                28,
+                0
+              ],
+              [
+                39,
+                9,
+                29,
+                24,
+                4
+              ],
+              [
+                9,
+                24,
+                14,
+                39,
+                19
+              ]
+            ]
+          }
+        },
+        {
+          "loading": {
+            "modelMs": 521.2000000178814,
+            "warmupMs": 54.29999998211861,
+            "totalMs": 575.5
+          },
+          "documentMs": 866.0999999940395,
+          "chunksPerSecond": 46.18404341331865,
+          "queryMs": [
+            9.300000011920929,
+            9,
+            10.599999994039536,
+            10,
+            11.300000011920929,
+            10.899999976158142,
+            24.200000017881393,
+            16.69999998807907
+          ],
+          "recall5": {
+            "mean": 0.47500000000000003,
+            "perQuery": [
+              0.8,
+              0.6,
+              0.4,
+              0.6,
+              0.6,
+              0.6,
+              0,
+              0.2
+            ],
+            "ranks": [
+              [
+                1,
+                0,
+                2,
+                3,
+                25
+              ],
+              [
+                5,
+                26,
+                6,
+                7,
+                0
+              ],
+              [
+                10,
+                11,
+                18,
+                22,
+                30
+              ],
+              [
+                17,
+                15,
+                30,
+                11,
+                16
+              ],
+              [
+                20,
+                22,
+                7,
+                23,
+                6
+              ],
+              [
+                27,
+                25,
+                6,
+                28,
+                0
+              ],
+              [
+                39,
+                9,
+                29,
+                24,
+                4
+              ],
+              [
+                9,
+                24,
+                14,
+                39,
+                19
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    "fp32Source": "https://hf-mirror.com/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+    "conditions": "Same fixed revision/tokenizer/mean pooling/L2 normalization/384D, WASM, one warmup, batch 8 documents, single-query calls; alternate dtype order; three fresh Workers per dtype. Excludes model loading and network transfer.",
+    "endToEnd": {
+      "fp32": null,
+      "reason": "Production API accepts q8 only; no changes to the production protocol or database are made for this comparison."
+    },
+    "models": [
+      {
+        "dtype": "fp32",
+        "filename": "model.onnx",
+        "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model.onnx",
+        "bytes": 90387606,
+        "sha256": "759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e",
+        "producer": "pytorch",
+        "producerVersion": "2.0.1",
+        "operators": {
+          "Unsqueeze": 51,
+          "Cast": 1,
+          "Constant": 146,
+          "Sub": 14,
+          "Mul": 26,
+          "Shape": 49,
+          "Gather": 52,
+          "Slice": 1,
+          "Add": 88,
+          "ReduceMean": 26,
+          "Pow": 13,
+          "Sqrt": 13,
+          "Div": 25,
+          "MatMul": 48,
+          "Concat": 24,
+          "Reshape": 24,
+          "Transpose": 24,
+          "Softmax": 6,
+          "Erf": 6
+        },
+        "initializerTypes": {
+          "1": 101,
+          "7": 1
+        }
+      },
+      {
+        "dtype": "q8",
+        "filename": "model_quantized.onnx",
+        "url": "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/751bff37182d3f1213fa05d7196b954e230abad9/onnx/model_quantized.onnx",
+        "bytes": 22972370,
+        "sha256": "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1",
+        "producer": "onnx.quantize",
+        "producerVersion": "0.1.0",
+        "operators": {
+          "Constant": 146,
+          "Unsqueeze": 51,
+          "Shape": 49,
+          "Gather": 52,
+          "DequantizeLinear": 3,
+          "Cast": 37,
+          "Add": 88,
+          "Sub": 14,
+          "Slice": 1,
+          "Mul": 98,
+          "ReduceMean": 26,
+          "Pow": 13,
+          "Sqrt": 13,
+          "Div": 25,
+          "DynamicQuantizeLinear": 24,
+          "MatMulInteger": 36,
+          "Concat": 24,
+          "Reshape": 24,
+          "Transpose": 24,
+          "MatMul": 12,
+          "Softmax": 6,
+          "Erf": 6
+        },
+        "initializerTypes": {
+          "1": 101,
+          "2": 6,
+          "3": 72,
+          "7": 1
+        }
+      }
+    ],
+    "tokenizer": [
+      {
+        "file": "config.json",
+        "bytes": 650,
+        "gitBlobId": "72147e4ff4426ebedbfa2146c4a0999def51a313",
+        "sha256": "7135149f7cffa1a573466c6e4d8423ed73b62fd2332c575bf738a0d033f70df7"
+      },
+      {
+        "file": "tokenizer.json",
+        "bytes": 711661,
+        "gitBlobId": "c17ed520ed8438736732a54957a69306b8822215",
+        "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+      },
+      {
+        "file": "tokenizer_config.json",
+        "bytes": 366,
+        "gitBlobId": "37fca74771bc76a8e01178ce3a6055a0995f8093",
+        "sha256": "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3"
+      },
+      {
+        "file": "special_tokens_map.json",
+        "bytes": 125,
+        "gitBlobId": "a8b3208c2884c4efb86e49300fdd3dc877220cdf",
+        "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+      }
+    ],
+    "summary": {
+      "fp32": {
+        "bytes": 90387606,
+        "chunksPerSecond": 48.40271055144179,
+        "queryEmbeddingMs": 10.600000008940697,
+        "recall5": 0.47500000000000003
+      },
+      "q8": {
+        "bytes": 22972370,
+        "chunksPerSecond": 67.6589986481843,
+        "queryEmbeddingMs": 8.049999997019768,
+        "recall5": 0.47500000000000003
+      }
+    },
+    "compressionRatio": 3.9346225922706277,
+    "recall5ChangeInt8MinusFp32": 0
+  }
+}
