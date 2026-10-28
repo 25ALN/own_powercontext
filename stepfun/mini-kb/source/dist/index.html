@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mini-kb · 端侧 embedding 最小 demo</title>
+    <script type="module" crossorigin src="./assets/index-Bel9jdLv.js"></script>
+  </head>
+  <body>
+    <h2>浏览器本地 embedding（Transformers.js）</h2>
+
+    <div id="status">状态：未初始化</div>
+    <div id="backend">推理后端：-</div>
+    <div id="gpuHint"></div>
+
+    <textarea id="text" rows="4" placeholder="输入一句话，生成它的向量"></textarea>
+    <br />
+    <button id="btn">生成向量</button>
+
+    <div id="result"></div>
+
+  </body>
+</html>
