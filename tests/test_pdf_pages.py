@@ -141,7 +141,7 @@ async def test_search_merges_duplicate_candidates_and_obeys_limit() -> None:
     assert citations[0].entry_version_id == "version-1"
 
 
-async def test_search_uses_deeper_candidate_pool_for_recall() -> None:
+async def test_search_keeps_bounded_candidate_pool() -> None:
     from powercontext.sources.pdf_pages import _MAX_SEARCH_CANDIDATES
 
     requests = []
@@ -154,7 +154,7 @@ async def test_search_uses_deeper_candidate_pool_for_recall() -> None:
     await search_pdf_pages(Memory(), "What is FY2022 unadjusted EBITDA less capex?", limit=20)
 
     assert requests
-    assert all(request.limit == min(_MAX_SEARCH_CANDIDATES, 20 * 12) for request in requests)
+    assert all(request.limit == min(_MAX_SEARCH_CANDIDATES, 20 * 8) for request in requests)
 
 
 def test_search_does_not_score_document_identity_as_page_evidence() -> None:
@@ -261,6 +261,19 @@ def test_query_variant_rank_does_not_reduce_equal_rank_rrf_contribution() -> Non
     late.add(3, "evidence")
 
     assert late.rrf == early.rrf
+
+
+def test_repeated_query_variants_do_not_accumulate_rrf_score() -> None:
+    from powercontext.sources.pdf_pages import _RankedCitation
+
+    citation = SimpleNamespace(memory_ref=None, entry_id="entry", entry_version_id="version")
+    ranked = _RankedCitation(citation=citation, text="evidence")
+
+    ranked.add(3, "query variant")
+    first_score = ranked.rrf
+    ranked.add(3, "overlapping query variant")
+
+    assert ranked.rrf == first_score
 
 
 def test_search_prefers_distinct_query_term_coverage_over_repeated_term_hits() -> None:

@@ -121,9 +121,9 @@ _QUERY_TERM_ALIASES = {
     "battle": ("legal proceedings", "litigation", "lawsuit"),
     "capex": ("capital expenditures", "capital spending"),
 }
-_QUERY_VARIANTS = 24
-_CANDIDATE_MULTIPLIER = 12
-_MAX_SEARCH_CANDIDATES = 320
+_QUERY_VARIANTS = 12
+_CANDIDATE_MULTIPLIER = 8
+_MAX_SEARCH_CANDIDATES = 160
 
 
 class _PDFPasswordRequiredError(Exception):
@@ -334,7 +334,7 @@ class _RankedCitation:
         self.phrase = 0.0
 
     def add(self, rank: int, _question: str) -> None:
-        self.rrf += 1 / (60 + rank)
+        self.rrf = max(self.rrf, 1 / (60 + rank))
 
     def score_relevance(
         self,
