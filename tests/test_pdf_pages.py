@@ -227,11 +227,14 @@ def test_query_variants_expand_financial_phrases() -> None:
     assert "gross profit" in _query_variants("What is the gross margin trend?")
     assert "current assets" in _query_variants("Does the company have a healthy quick ratio?")
     assert "statement of income" in _query_variants("Does AMEX have an improving operating margin profile?")
+    assert "statement of income" in _query_variants("What is unadjusted operating income for FY2022?")
     assert "major customers" in _query_variants("Who are the primary customers of Boeing?")
+    assert "government contracts" in _query_variants("Who are the primary customers of Boeing?")
     assert "statement of income" in _query_variants("What drove gross margin change for American Express?")
     assert "property plant and equipment" in _query_variants("Is 3M a capital-intensive business?")
     assert "sales change" in _query_variants("Which segment dragged down overall growth?")
     assert "geographic operations" in _query_variants("What geographies does American Express operate in?")
+    assert "businesses in" in _query_variants("What geographies does American Express operate in?")
     assert "substantial portion of revenue" in _query_variants("Who are the primary customers of a company?")
 
 
@@ -267,6 +270,34 @@ def test_financial_phrase_alias_counts_as_phrase_evidence() -> None:
     ranked.score_relevance(query_terms, dict.fromkeys(query_terms, 1.0), page_terms, searchable_text)
 
     assert ranked.phrase == 1.0
+    assert ranked.alias_match >= 2
+
+
+def test_customer_search_prefers_government_contract_disclosures() -> None:
+    memory_ref = ArtifactRef(family="memory", artifact_id="main", revision=1)
+    broad_match = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-1",
+        entry_version_id="version-1",
+        text="BOEING_2022_10K\nWe serve customers in commercial aviation markets.",
+    )
+    concentrated_customer = SimpleNamespace(
+        memory_ref=memory_ref,
+        entry_id="entry-2",
+        entry_version_id="version-2",
+        text=(
+            "BOEING_2022_10K\nWe derive substantial revenue from the U.S. government. "
+            "Forty percent of revenues are earned under U.S. government contracts."
+        ),
+    )
+
+    class Memory:
+        async def search(self, request, /):
+            return SimpleNamespace(hits=(broad_match, concentrated_customer))
+
+    citations = asyncio.run(search_pdf_pages(Memory(), "Who are the primary customers of Boeing?", limit=2))
+
+    assert citations[0].entry_id == "entry-2"
 
 
 def test_query_variants_keep_windows_from_the_end_of_long_questions() -> None:
