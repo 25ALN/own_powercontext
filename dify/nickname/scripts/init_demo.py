@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""默认创建验收用空白 Scope；--seed 可选写入故事。仅使用 Python 标准库。"""
+"""独立检查 PowerContext 鉴权与接口；默认创建空白诊断 Scope，--seed 可选写入故事。"""
 
 import argparse
 from datetime import datetime, timezone
@@ -98,7 +98,7 @@ def main():
             raise ValueError("已写入记忆，但搜索未命中，请检查 PowerContext。")
 
     print(json.dumps({
-        "PC_SCOPE_A": scope_id,
+        "scope_id": scope_id,
         "scope_name": name,
         "mode": "seed" if args.seed else "empty",
         "matched_history_count": len(hits),

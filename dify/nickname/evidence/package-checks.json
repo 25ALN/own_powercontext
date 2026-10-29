@@ -1,0 +1,79 @@
+{
+  "check_date": "2026-10-29",
+  "scope": "local static checks and code-node/template simulation; HTTP and LLM were test doubles",
+  "real_dify_import_or_run_of_modified_package_performed": false,
+  "real_model_or_powercontext_calls_performed_by_these_checks": false,
+  "all_passed": true,
+  "checks": [
+    {
+      "check": "ifpkg manifest size and sha256 match standalone DSL",
+      "passed": true
+    },
+    {
+      "check": "PC_TOKEN is Secret with empty default",
+      "passed": true
+    },
+    {
+      "check": "no fixed player scope variable or literal scope ID in DSL",
+      "passed": true
+    },
+    {
+      "check": "all three HTTP nodes use configurable base URL and Bearer secret variable",
+      "passed": true
+    },
+    {
+      "check": "save check receives remember status, not search status",
+      "passed": true
+    },
+    {
+      "check": "LLM history and query use explicit USER message with built-in memory disabled",
+      "passed": true
+    },
+    {
+      "check": "all five Python code nodes compile",
+      "passed": true
+    },
+    {
+      "check": "connected acyclic chain reaches all 11 nodes",
+      "passed": true
+    },
+    {
+      "check": "simulated first turn starts empty and saves actual query including quotes/newline",
+      "passed": true
+    },
+    {
+      "check": "same user in new simulated conversation reuses scope and recalls exact saved artifact",
+      "passed": true
+    },
+    {
+      "check": "retrieved memory actually enters rendered LLM USER input",
+      "passed": true
+    },
+    {
+      "check": "different simulated user gets independent scope and empty history",
+      "passed": true
+    },
+    {
+      "check": "remember 500 with nonempty records cannot produce saved confirmation",
+      "passed": true
+    },
+    {
+      "check": "save check rejects empty records, malformed JSON and failed authentication",
+      "passed": true
+    },
+    {
+      "check": "scope parser rejects HTTP failure or missing scope ID",
+      "passed": true
+    },
+    {
+      "check": "diagnostic helper creates an empty scope and exports scope_id without shared-player alias or token",
+      "passed": true
+    },
+    {
+      "check": "all eight packaged screenshots are unchanged",
+      "passed": true
+    }
+  ],
+  "source_app_sha256": "936d1fded54c67c085521bd971848f339220244d0de48fadf72103d52fe9efcf",
+  "submission_app_sha256": "f084ada21cd637ae9ae0aa69317d3676c61da175b23040edb4649ce3100ee271"
+}

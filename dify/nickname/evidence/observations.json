@@ -1,0 +1,105 @@
+{
+  "source_kind": "transcribed_from_user_supplied_screenshots",
+  "date": "2026-10-29",
+  "app_id": "30c311d3-33a5-4c2c-94e6-a63f30c4a10a",
+  "namespace": "nickname-final-20261029-01",
+  "A": {
+    "user_id": "0a2c80e4-22a5-4ca6-99cf-71024eed2821",
+    "user_key": "5ecfa0c982215bcb32d0b8a9cf026257ebeaddb8da0957a14b3640c14b2cf020",
+    "scope_id": "scp_0khyfwceht79bwd8psd7cazq3f",
+    "first_input": "我把周报文件命名为“周报_海盐柠檬1029”，结果发错了群。",
+    "first_search": {
+      "status_code": 200,
+      "mode": "text",
+      "hits": [],
+      "response_time_utc": "2026-10-29T05:35:08Z"
+    },
+    "save": {
+      "status_code": 200,
+      "changed": true,
+      "artifact": {
+        "family": "atomic-memory",
+        "artifact_id": "art_76d4e19fcee7454d8cc343722e6c6b3f",
+        "revision": 1
+      },
+      "title": "海盐柠檬社死特调",
+      "response_time_utc": "2026-10-29T05:35:10Z"
+    },
+    "later_search": {
+      "status_code": 200,
+      "matched_artifact_id": "art_76d4e19fcee7454d8cc343722e6c6b3f",
+      "matched_revision": 1,
+      "matched_first_input": true,
+      "matched_first_title": true,
+      "history_node_contains_first_record": true,
+      "response_time_utc": "2026-10-29T05:47:42Z"
+    },
+    "new_conversation_action": "user_reported_following_the_new_conversation_steps",
+    "conversation_ids_visible_in_screenshots": false,
+    "second_generated_reply_visible_in_supplied_a2_screenshots": false
+  },
+  "B": {
+    "user_id": "d47f096d-1c2f-4a19-ba57-c90dbed73690",
+    "user_key": "56662e4f96c1f979b2c8c82c051fd88c1c3c8d25529e7bf6aa856f215df9d6f4",
+    "scope_id": "scp_5xh4wcn7w3nawg6zm22axh1e8d",
+    "input": "我把咖啡倒进了泡面，吃完才发现。",
+    "input_source": "requested_test_input_followed_by_user_uploaded_run_screenshots",
+    "search": {
+      "status_code": 200,
+      "mode": "text",
+      "hits": [],
+      "response_time_utc": "2026-10-29T05:57:30Z"
+    },
+    "reply_title": "咖啡泡面双修侠",
+    "reply_shows_saved_confirmation": true,
+    "raw_remember_response_visible": false
+  },
+  "screenshots": [
+    {
+      "file": "a1-user-scope.png",
+      "original_name": "Screenshot_20261029_134443.png",
+      "sha256": "172e1c35f78ffb7c0d1838ccad941b547c845faca43d2ff342cb3152979b6886"
+    },
+    {
+      "file": "a1-empty-search.png",
+      "original_name": "Screenshot_20261029_134458.png",
+      "sha256": "4152fc8040e2dcc578e9ceeb84b5473e6dfbaedbc754299d49a7df97e05c5ccf"
+    },
+    {
+      "file": "a1-save.png",
+      "original_name": "Screenshot_20261029_134509.png",
+      "sha256": "802b8eec3641f03d7f0fffbf76214758817fe29f4434509118897405287a87e7"
+    },
+    {
+      "file": "a2-recall.png",
+      "original_name": "Screenshot_20261029_135100.png",
+      "sha256": "01561085f31a05a5b08e79b31ed101745d7ed9934abd4f0ae56f71b4cea24c5f"
+    },
+    {
+      "file": "a2-history.png",
+      "original_name": "Screenshot_20261029_135114.png",
+      "sha256": "d0e1e3f5790d37ae28972769278a6e9840a81ae5e6febaf83c9245fbe3c33ff7"
+    },
+    {
+      "file": "b-user.png",
+      "original_name": "Screenshot_20261029_135942.png",
+      "sha256": "69edf2604015f5eacf4501cb7cb3676d2b59306dc41441b1942cda38120099c4"
+    },
+    {
+      "file": "b-empty-search.png",
+      "original_name": "Screenshot_20261029_135958.png",
+      "sha256": "01d591e371a416aede5368b961c7d609e3c878ea4f564e968c65db4ad7e98bf8"
+    },
+    {
+      "file": "b-reply.png",
+      "original_name": "Screenshot_20261029_140006.png",
+      "sha256": "bad7a1a267aa50719370ce6397e6b459285e6f4be8379947d0bd0eec0248432e"
+    }
+  ],
+  "package_changes": [
+    "保存检查.status_code 改为引用保存记忆.status_code",
+    "LLM 将原 query_prompt_template 移至显式 USER 消息，memory 设为 null"
+  ],
+  "source_app_sha256": "936d1fded54c67c085521bd971848f339220244d0de48fadf72103d52fe9efcf",
+  "submission_app_sha256": "f084ada21cd637ae9ae0aa69317d3676c61da175b23040edb4649ce3100ee271"
+}
