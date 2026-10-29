@@ -54,7 +54,7 @@ workflow:
     selector:
     - env
     - PC_SCOPE_A
-    value: scp_5weg14yyf9zgdtxjhjn1aw6d3f
+    value: scp_0vfwrh9jtv2scsmv8xvsc7dppj
     value_type: string
   - description: ''
     id: 2c90e5d0-1310-4d3b-aec4-8e9a646ef346
@@ -113,7 +113,7 @@ workflow:
       type: custom
       zIndex: 0
     - data:
-        isInIteration: null
+        isInIteration: false
         isInLoop: false
         iteration_id: null
         loop_id: null
@@ -130,13 +130,49 @@ workflow:
     - data:
         isInIteration: false
         isInLoop: false
-        iteration_id: null
-        loop_id: null
         sourceType: llm
-        targetType: answer
-      id: llm-answer
+        targetType: code
+      id: llm-source-1793246710926-target
       selected: false
       source: llm
+      sourceHandle: source
+      target: '1793246710926'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: http-request
+      id: 1793246710926-source-1793246751400-target
+      selected: false
+      source: '1793246710926'
+      sourceHandle: source
+      target: '1793246751400'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1793246751400-source-1793246762510-target
+      selected: false
+      source: '1793246751400'
+      sourceHandle: source
+      target: '1793246762510'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: answer
+      id: 1793246762510-source-answer-target
+      selected: false
+      source: '1793246762510'
       sourceHandle: source
       target: answer
       targetHandle: target
@@ -151,12 +187,12 @@ workflow:
       height: 72
       id: '1793169218088'
       position:
-        x: 101.18916667203393
-        y: 76.88886661471021
+        x: 59.65839999484723
+        y: 50.61429994138797
       positionAbsolute:
-        x: 101.18916667203393
-        y: 76.88886661471021
-      selected: true
+        x: 59.65839999484723
+        y: 50.61429994138797
+      selected: false
       sourcePosition: right
       targetPosition: left
       type: custom
@@ -173,8 +209,8 @@ workflow:
           - id: key-value-305
             key: ''
             type: text
-            value: "{\n  \"scope_id\": \"scp_5weg14yyf9zgdtxjhjn1aw6d3f\",\n  \"query\"\
-              : \"nicknamehistory\",\n  \"limit\": 3\n}"
+            value: "{\n  \"scope_id\": \"{{#env.PC_SCOPE_A#}}\",\n  \"query\": \"\
+              nicknamehistory\",\n  \"limit\": 3\n}"
           type: json
         headers: ''
         method: post
@@ -191,21 +227,22 @@ workflow:
           max_write_timeout: 0
         title: 读取历史
         type: http-request
-        url: http://172.17.0.1:18000/v1/memory/search
+        url: '{{#env.PC_BASE_URL#}}/v1/memory/search'
         variables: []
-      height: 81
+      height: 141
       id: '1793170824368'
       position:
-        x: 521.8485000354246
-        y: 97.88886661471021
+        x: 360.8108333279657
+        y: 71.61429994138797
       positionAbsolute:
-        x: 521.8485000354246
-        y: 97.88886661471021
-      selected: true
+        x: 360.8108333279657
+        y: 71.61429994138797
+      selected: false
       sourcePosition: right
       targetPosition: left
       type: custom
       width: 242
+      zIndex: 0
     - data:
         code: "import json\n\n\ndef main(body: str, status_code: int) -> dict:\n \
           \   if status_code != 200:\n        raise ValueError(\n            f\"记忆搜索失败，HTTP\
@@ -235,18 +272,19 @@ workflow:
       height: 51
       id: '1793174175867'
       position:
-        x: 299.4811666462706
-        y: 345.090899978745
+        x: 658.0404668130893
+        y: 71.61429994138797
       positionAbsolute:
-        x: 299.4811666462706
-        y: 345.090899978745
-      selected: true
+        x: 658.0404668130893
+        y: 71.61429994138797
+      selected: false
       sourcePosition: right
       targetPosition: left
       type: custom
       width: 242
+      zIndex: 0
     - data:
-        answer: '{{#llm.text#}}'
+        answer: '{{#1793246762510.answer#}}'
         selected: false
         title: 直接回复
         type: answer
@@ -254,12 +292,12 @@ workflow:
       height: 102
       id: answer
       position:
-        x: 526.0863333698313
-        y: 611.5142667448159
+        x: 391.3232333356947
+        y: 510.3664000206106
       positionAbsolute:
-        x: 526.0863333698313
-        y: 611.5142667448159
-      selected: true
+        x: 391.3232333356947
+        y: 510.3664000206106
+      selected: false
       sourcePosition: right
       targetPosition: left
       type: custom
@@ -331,19 +369,152 @@ workflow:
       height: 87
       id: llm
       position:
-        x: 119.79703326742168
-        y: 611.5142667448159
+        x: 59.65839999484729
+        y: 306.9503999690836
       positionAbsolute:
-        x: 119.79703326742168
-        y: 611.5142667448159
-      selected: true
+        x: 59.65839999484729
+        y: 306.9503999690836
+      selected: false
       sourcePosition: right
       targetPosition: left
       type: custom
       width: 242
       zIndex: 0
+    - data:
+        code: "import json\n\n\ndef main(query: str, reply: str, scope_id: str) ->\
+          \ dict:\n    text = (\n        \"nicknamehistory\\n\"\n        f\"玩家自述：{query}\\\
+          n\"\n        f\"本次称号与判词：{reply}\"\n    )\n\n    if len(text.encode(\"utf-8\"\
+          )) > 8192:\n        raise ValueError(\"本次内容过长，未保存，请缩短输入后重试。\")\n\n    return\
+          \ {\n        \"request_body\": json.dumps({\n            \"scope_id\": scope_id,\n\
+          \            \"kind\": \"decision\",\n            \"text\": text\n     \
+          \   }, ensure_ascii=False)\n    }\n"
+        code_language: python3
+        outputs:
+          request_body:
+            children: null
+            type: string
+        selected: false
+        title: 准备保存
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: query
+        - value_selector:
+          - llm
+          - text
+          value_type: string
+          variable: reply
+        - value_selector:
+          - env
+          - PC_SCOPE_A
+          value_type: string
+          variable: scope_id
+      height: 51
+      id: '1793246710926'
+      position:
+        x: 360.8108333279657
+        y: 306.9503999690836
+      positionAbsolute:
+        x: 360.8108333279657
+        y: 306.9503999690836
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config:
+            api_key: '{{#env.PC_TOKEN#}}'
+            type: bearer
+          type: api-key
+        body:
+          data:
+          - id: key-value-545
+            key: ''
+            type: text
+            value: '{{#1793246710926.request_body#}}'
+          type: json
+        headers: ''
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: false
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: 保存记忆
+        type: http-request
+        url: '{{#env.PC_BASE_URL#}}/v1/memory/remember'
+        variables: []
+      height: 111
+      id: '1793246751400'
+      position:
+        x: 658.0404668130893
+        y: 306.9503999690836
+      positionAbsolute:
+        x: 658.0404668130893
+        y: 306.9503999690836
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\n\ndef main(body: str, status_code: int, reply: str)\
+          \ -> dict:\n    try:\n        records = json.loads(body).get(\"records\"\
+          , [])\n        saved = 200 <= status_code < 300 and bool(records)\n    except\
+          \ (ValueError, TypeError, AttributeError):\n        saved = False\n\n  \
+          \  if saved:\n        tip = \"记忆已保存，下次新会话仍可读取。\"\n    else:\n        tip\
+          \ = \"本次记忆未确认保存，请检查写入节点。\"\n\n    return {\n        \"answer\": reply +\
+          \ \"\\n\\n\" + tip\n    }"
+        code_language: python3
+        outputs:
+          answer:
+            children: null
+            type: string
+        selected: false
+        title: 保存检查
+        type: code
+        variables:
+        - value_selector:
+          - '1793246751400'
+          - body
+          value_type: string
+          variable: body
+        - value_selector:
+          - '1793170824368'
+          - status_code
+          value_type: number
+          variable: status_code
+        - value_selector:
+          - llm
+          - text
+          value_type: string
+          variable: reply
+      height: 51
+      id: '1793246762510'
+      position:
+        x: 59.65839999484729
+        y: 510.3664000206106
+      positionAbsolute:
+        x: 59.65839999484729
+        y: 510.3664000206106
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
     viewport:
-      x: -21.46364086119354
-      y: 7.8337398312871755
+      x: 95.53635913880669
+      y: -84.82713243215278
       zoom: 1.1798481925669855
   rag_pipeline_variables: []

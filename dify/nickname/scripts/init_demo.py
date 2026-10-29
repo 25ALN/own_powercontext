@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""初始化演示历史。仅使用 Python 标准库，默认读取 ~/apps/powercontext/.env。"""
+"""默认创建验收用空白 Scope；--seed 可选写入故事。仅使用 Python 标准库。"""
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
+import secrets
 import shlex
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 
@@ -25,7 +28,7 @@ def load_token(env_file):
             if separator and key.strip() == "POWERCONTEXT_SERVER_AUTH_TOKEN":
                 parts = shlex.split(value, comments=True)
                 token = parts[0].strip() if len(parts) == 1 else ""
-    if not token or token.startswith("REPLACE_") or "\n" in token or "\r" in token:
+    if not token or token.startswith("REPLACE_") or any(c.isspace() for c in token):
         raise ValueError("请在环境变量或 --env-file 指定的配置中填写有效的访问令牌。")
     return token
 
@@ -34,9 +37,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:18000")
     parser.add_argument("--env-file", type=Path, default=Path.home() / "apps/powercontext/.env")
-    parser.add_argument("--name", default="nickname-demo-a", help="Scope 名称及幂等键；换新名称可恢复初始状态")
-    parser.add_argument("--empty", action="store_true", help="仅创建 Scope，不写入演示历史")
+    parser.add_argument("--name", help="Scope 名称及幂等键；省略则自动生成唯一名称")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--empty", action="store_true", help="仅创建空白 Scope（默认，兼容旧用法）")
+    mode.add_argument("--seed", action="store_true", help="写入演示故事，不用于空白验收")
     args = parser.parse_args()
+    if urlsplit(args.url).scheme not in ("http", "https") or not urlsplit(args.url).netloc:
+        raise ValueError("--url 必须是有效的 http:// 或 https:// 服务地址。")
+    name = args.name.strip() if args.name is not None else (
+        "nickname-live-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        + "-" + secrets.token_hex(4)
+    )
+    if not name:
+        raise ValueError("--name 不能为空。")
     token = load_token(args.env_file)
     opener = build_opener(ProxyHandler({}))
 
@@ -48,32 +61,47 @@ def main():
             method="POST",
         )
         with opener.open(request, timeout=15) as response:
-            return json.load(response)
+            data = json.load(response)
+        if not isinstance(data, dict):
+            raise ValueError("接口返回格式错误：" + path)
+        return data
 
     scope = post("/v1/scopes", {
-        "title": args.name,
-        "summary": "黑历史封号机演示玩家A" if args.name == "nickname-demo-a" else "黑历史封号机演示记忆空间",
-        "idempotency_key": args.name,
+        "title": name,
+        "summary": "黑历史封号机验收记忆空间",
+        "idempotency_key": name,
     })
-    scope_id = scope["scope_id"]
+    scope_id = scope.get("scope_id")
+    if not isinstance(scope_id, str) or not scope_id:
+        raise ValueError("创建 Scope 未返回有效 scope_id。")
     search = {"scope_id": scope_id, "query": "nicknamehistory", "limit": 3}
-    hits = post("/v1/memory/search", search)["hits"]
-    if args.empty:
+
+    def search_history():
+        hits = post("/v1/memory/search", search).get("hits")
+        if not isinstance(hits, list):
+            raise ValueError("搜索接口未返回 hits 数组。")
+        return hits
+
+    hits = search_history()
+    if not args.seed:
         if hits:
-            raise ValueError("该 Scope 已有演示历史，请换一个新的 --name 创建空白 Scope。")
+            raise ValueError("该 Scope 已有游戏历史；请省略 --name 或换新名称，原数据未删除。")
     elif not hits:
         saved = post("/v1/memory/remember", {
             "scope_id": scope_id, "kind": "decision", "text": SEED,
         })
-        if not saved.get("records"):
-            raise ValueError("记忆写入未返回 records，请检查 PowerContext。")
-        hits = post("/v1/memory/search", search)["hits"]
+        records = saved.get("records")
+        if not isinstance(records, list) or not records:
+            raise ValueError("记忆写入未返回非空 records 数组，请检查 PowerContext。")
+        hits = search_history()
         if not hits:
             raise ValueError("已写入记忆，但搜索未命中，请检查 PowerContext。")
 
     print(json.dumps({
         "PC_SCOPE_A": scope_id,
-        "history_count": len(hits),
+        "scope_name": name,
+        "mode": "seed" if args.seed else "empty",
+        "matched_history_count": len(hits),
         "history": [hit["memory"]["text"] for hit in hits],
     }, ensure_ascii=False, indent=2))
 
